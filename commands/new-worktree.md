@@ -50,7 +50,16 @@ Report success with:
 - Worktree path
 - Command to cd into it
 
-### Step 4: Provide Next Steps
+### Step 4: Rename Session
+
+Rename the Claude Code session to match the work description:
+```
+/rename {keywords}
+```
+
+For example, if keywords are `fix-auth-bug`, run `/rename fix-auth-bug`.
+
+### Step 5: Provide Next Steps
 
 Tell the user:
 ```
@@ -70,12 +79,12 @@ Or open in a new terminal/editor.
 2. `/implement` - Implement from plan
 3. `/test` - Run tests
 4. `/docs-review` - Check docs before PR
-5. `/review` - Run CodeRabbit CLI locally, fix issues
+5. `/coderabbit` - Run CodeRabbit CLI locally, fix issues
 6. `/pr` - Create PR (auto-ignores CodeRabbit bot)
 7. `/worktree-cleanup` - Clean up after merge
 ```
 
-### Step 5: Read Project Context
+### Step 6: Read Project Context
 
 Read key documentation if it exists:
 - `CLAUDE.md` (project instructions)
@@ -85,7 +94,7 @@ Read key documentation if it exists:
 
 If no docs exist, that's fine - just note it.
 
-### Step 6: Summarize and Confirm Ready
+### Step 7: Summarize and Confirm Ready
 
 Provide:
 1. **Worktree created:** path and branch
@@ -103,7 +112,7 @@ End with: **"Ready for your task. What would you like to work on?"**
 | `/test` | Run tests and check coverage |
 | `/docs-review` | Update docs before merging |
 | `/docs-maintain` | Periodic documentation cleanup |
-| `/review` | Run CodeRabbit CLI locally before PR |
+| `/coderabbit` | Run CodeRabbit CLI locally before PR |
 | `/pr` | Create PR with @coderabbitai ignore |
 | `/worktree-cleanup` | Clean up merged worktrees |
 
