@@ -19,7 +19,7 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 ### Before Creating PR (in order)
 ```
 /docs-review   # Update docs if needed
-/review        # Run CodeRabbit CLI locally, fix issues (max 3 cycles)
+/coderabbit    # Run CodeRabbit CLI locally, fix issues (max 3 cycles)
 /pr            # Create PR (auto-adds @coderabbitai ignore)
 ```
 
@@ -33,7 +33,7 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 
 1. **Always use worktrees** - Never commit directly to main. Start with `/new-worktree`.
 
-2. **Review before PR, not after** - Run `/review` locally before `/pr`. This runs `coderabbit --prompt-only` for efficient LLM-friendly output.
+2. **Review before PR, not after** - Run `/coderabbit` locally before `/pr`. This runs `coderabbit --prompt-only` for efficient LLM-friendly output.
 
 3. **PRs must include `@coderabbitai ignore`** - The `/pr` command adds this automatically. We review locally, not via GitHub bot.
 
@@ -49,5 +49,5 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 |-------|----------|
 | Start | `/new-worktree <desc>` |
 | Build | `/plan` → `/implement` → `/test` |
-| Ship | `/docs-review` → `/review` → `/pr` |
+| Ship | `/docs-review` → `/coderabbit` → `/pr` |
 | Clean | `/worktree-cleanup` |
