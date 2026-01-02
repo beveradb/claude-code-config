@@ -50,16 +50,7 @@ Report success with:
 - Worktree path
 - Command to cd into it
 
-### Step 4: Rename Session
-
-Rename the Claude Code session to match the work description:
-```
-/rename {keywords}
-```
-
-For example, if keywords are `fix-auth-bug`, run `/rename fix-auth-bug`.
-
-### Step 5: Provide Next Steps
+### Step 4: Provide Next Steps
 
 Tell the user:
 ```
@@ -67,6 +58,8 @@ Tell the user:
 
 **Branch:** feat/sess-YYYYMMDD-HHMM-keywords
 **Location:** /path/to/worktree
+
+**Rename session:** /rename {keywords}
 
 To start working:
   cd {worktree-path}
@@ -84,7 +77,7 @@ Or open in a new terminal/editor.
 7. `/worktree-cleanup` - Clean up after merge
 ```
 
-### Step 6: Read Project Context
+### Step 5: Read Project Context
 
 Read key documentation if it exists:
 - `CLAUDE.md` (project instructions)
@@ -94,7 +87,7 @@ Read key documentation if it exists:
 
 If no docs exist, that's fine - just note it.
 
-### Step 7: Summarize and Confirm Ready
+### Step 6: Summarize and Confirm Ready
 
 Provide:
 1. **Worktree created:** path and branch
