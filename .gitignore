@@ -1,0 +1,13 @@
+debug/
+file-history/
+projects.json
+settings.json
+statsig/
+*.local
+history.jsonl
+plans/
+plugins/
+projects/
+shell-snapshots/
+stats-cache.json
+todos/
