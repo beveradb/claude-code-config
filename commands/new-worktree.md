@@ -59,8 +59,6 @@ Tell the user:
 **Branch:** feat/sess-YYYYMMDD-HHMM-keywords
 **Location:** /path/to/worktree
 
-**Rename session:** /rename {keywords}
-
 To start working:
   cd {worktree-path}
 
@@ -95,6 +93,11 @@ Provide:
 3. **Recent activity:** Notable recent changes (from docs or git log)
 
 End with: **"Ready for your task. What would you like to work on?"**
+
+Then output the rename command as the final line:
+```
+**Rename session:** /rename {keywords}
+```
 
 ## Related Commands
 
