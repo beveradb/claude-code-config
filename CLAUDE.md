@@ -43,6 +43,8 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 
 6. **Docs stay current** - Run `/docs-review` before PR to check if docs need updates.
 
+7. **GitHub CLI auth** - When using the `gh` CLI instead of the GitHub MCP, run `gh auth switch` first to ensure you're using the correct account.
+
 ## Quick Reference
 
 | Phase | Commands |

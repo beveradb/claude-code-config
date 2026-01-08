@@ -127,9 +127,6 @@ Provide:
 - [x] Review feedback addressed
 
 @coderabbitai ignore
-
----
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
 ## Why @coderabbitai ignore?

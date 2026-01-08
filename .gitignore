@@ -1,13 +1,27 @@
+# macOS
+.DS_Store
+
+# Claude Code sensitive/generated data
 debug/
 file-history/
-projects.json
-settings.json
-statsig/
-*.local
 history.jsonl
 plans/
 plugins/
 projects/
+projects.json
+settings.json
 shell-snapshots/
 stats-cache.json
+statsig/
 todos/
+
+# Session and cache data
+cache/
+paste-cache/
+session-env/
+telemetry/
+
+# IDE and local files
+ide/
+downloads/
+*.local
