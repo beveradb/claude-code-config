@@ -13,7 +13,7 @@ Create a PR after ensuring code quality with local review.
 
 - You should be on a feature branch (not main)
 - Changes should be committed
-- Review should be complete (run `/review` first if not done)
+- Review should be complete (run `/coderabbit` first if not done)
 
 ## Instructions
 
@@ -43,8 +43,8 @@ Look for recent review-related commits:
 git log --oneline -5 | grep -i "coderabbit\|review\|fix:"
 ```
 
-If no evidence of review, suggest running `/review` first. Ask user if they want to:
-1. Run `/review` now
+If no evidence of review, suggest running `/coderabbit` first. Ask user if they want to:
+1. Run `/coderabbit` now
 2. Skip review and create PR anyway
 
 ### Step 3: Ensure Branch is Pushed
@@ -141,6 +141,7 @@ We use the CodeRabbit CLI locally before creating the PR because:
 
 | Command | Purpose |
 |---------|---------|
-| `/review` | Run CodeRabbit CLI review locally |
+| `/coderabbit` | Run CodeRabbit CLI review locally |
 | `/test` | Run tests before PR |
 | `/docs-review` | Check if docs need updates |
+| `/shipit` | Run all remaining steps and ship to prod |

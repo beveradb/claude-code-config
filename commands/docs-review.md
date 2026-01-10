@@ -123,3 +123,12 @@ Provide a summary:
 - Keep docs DRY - don't repeat what's in code
 - Write for future developers (including AI agents)
 - Archive completed work, keep active docs current
+
+## Related Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/test` | Run tests before review |
+| `/coderabbit` | Run CodeRabbit CLI review |
+| `/pr` | Create PR after docs review |
+| `/shipit` | Run all remaining steps and ship to prod |

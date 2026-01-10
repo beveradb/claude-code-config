@@ -1,17 +1,20 @@
 ---
-description: Maintain git worktrees - identify merged PRs for cleanup
+description: Tidy all worktrees - review and clean up across all worktrees (interactive)
 allowed-tools: Read, Glob, Grep, Bash, mcp__github__list_pull_requests, mcp__github__pull_request_read, mcp__github__get_me, mcp__github__search_pull_requests, AskUserQuestion
 ---
 
-# Git Worktree Maintenance
+# Tidy All Worktrees
 
-Clean up git worktrees for merged PRs and organize outstanding work.
+Review all git worktrees, identify merged PRs for cleanup, and organize outstanding work.
+
+**Note:** This is an interactive maintenance command for periodic use. For quick cleanup of the current worktree after merging, use `/cleanup` instead.
 
 ## When to Use
 
-- Periodically to clean up merged work
+- Periodically to clean up multiple merged worktrees at once
 - When disk space is getting low
-- To get an overview of outstanding work across worktrees
+- To get an overview of outstanding work across all worktrees
+- When you want to rename or reorganize worktrees
 
 ## Instructions
 

@@ -126,3 +126,12 @@ Provide a summary:
 - Don't chase perfection - 2-3 cycles max
 - Focus on real issues, skip pure style nitpicks
 - If review takes too long, you can check progress with the background task
+
+## Related Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/test` | Run tests before review |
+| `/docs-review` | Check if docs need updates |
+| `/pr` | Create PR after review |
+| `/shipit` | Run all remaining steps and ship to prod |

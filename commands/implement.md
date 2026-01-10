@@ -80,10 +80,16 @@ As you work:
 
 ### 7. When Complete
 
-After implementation:
+After implementation, either:
+
+**Option A: Ship it all with one command**
+- Run `/shipit` to automatically run tests, review, docs, create PR, merge, deploy, and verify prod
+
+**Option B: Run steps individually**
 1. Run `/test` to verify everything passes
-2. Run `/docs-review` to check if docs need updates
-3. Suggest creating a PR if on a feature branch
+2. Run `/coderabbit` to review and fix issues
+3. Run `/docs-review` to check if docs need updates
+4. Run `/pr` to create pull request
 
 ## Output
 

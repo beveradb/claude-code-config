@@ -80,15 +80,63 @@ Flag potential issues:
 - Sections that seem outdated
 - Missing sections that should exist
 
-### 6. Take Action
+### 6. LESSONS-LEARNED.md Size Management
+
+The `LESSONS-LEARNED.md` file is read by `/new-worktree` to provide context to new sessions. It must stay under ~500 lines (~15K tokens) to fit in context windows.
+
+**Check size:**
+```bash
+wc -l docs/LESSONS-LEARNED.md 2>/dev/null || echo "No LESSONS-LEARNED.md"
+```
+
+**If over 400 lines, perform archival:**
+
+1. **Read the full file** to understand the content structure and identify lessons by date/topic
+
+2. **Identify archival candidates:**
+   - Lessons older than 2-3 months
+   - Lessons specific to completed/shipped features
+   - Lessons that are very detailed but can be summarized
+   - Keep: Recent lessons, foundational patterns, frequently-referenced wisdom
+
+3. **Create archive file:**
+   - Path: `docs/archive/YYYY-MM-DD-lessons-learned-archive.md`
+   - Include full content of archived lessons
+   - Add header explaining this is an archive
+
+4. **Update main LESSONS-LEARNED.md:**
+   - Remove archived content
+   - Add a "Summary of Archived Lessons" section near the top (after any intro)
+   - Format as brief bullet points (1-2 sentences each)
+   - Include reference: `> Full details: docs/archive/YYYY-MM-DD-lessons-learned-archive.md`
+
+**Example summary format:**
+```markdown
+## Summary of Archived Lessons
+
+> Full details: [docs/archive/2025-01-09-lessons-learned-archive.md](archive/2025-01-09-lessons-learned-archive.md)
+
+Key takeaways from older lessons:
+- **Topic A**: Brief 1-sentence summary of the lesson
+- **Topic B**: Brief 1-sentence summary of the lesson
+- **Topic C**: Brief 1-sentence summary of the lesson
+```
+
+**Target outcome:**
+- Main file: Under 400 lines, recent + summarized older lessons
+- Archive: Complete historical record for deep dives
+- Future sessions get key lessons without context overflow
+
+### 7. Take Action
 
 Based on findings:
 1. **Fix structural issues** - Move/rename misplaced files
 2. **Update stale content** - Refresh outdated information
 3. **Archive completed work** - Move old docs to archive/
 4. **Remove obsolete content** - Delete truly unnecessary files
+5. **Archive old lessons** - If LESSONS-LEARNED.md is too large, archive older content
 
-### 7. Report Findings
+### 8. Report Findings
 
 Provide a maintenance report:
 
@@ -110,6 +158,7 @@ Provide a maintenance report:
 - [ ] Archive: OK / Needs cleanup
 - [ ] Cross-refs: OK / Broken links found
 - [ ] Quality: OK / Large files flagged
+- [ ] Lessons-Learned: OK / Archived older content / Needs archival
 ```
 
 ## Guidelines

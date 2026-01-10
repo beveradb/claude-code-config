@@ -11,7 +11,22 @@ Run the project's test suite and report results.
 
 ## Instructions
 
-### 1. Detect Project Type and Test Runner
+### 1. Check for Project Testing Documentation
+
+First, look for testing-specific documentation to understand project testing practices:
+
+```bash
+# Check for testing documentation
+ls -la TESTING.md docs/TESTING.md 2>/dev/null
+```
+
+If `TESTING.md` or `docs/TESTING.md` exists:
+- **Read it thoroughly** before running tests
+- Follow any project-specific testing patterns, coverage requirements, or commands
+- Note any special test categories (unit, integration, e2e) and when to run each
+- Check for required environment setup or test fixtures
+
+### 2. Detect Project Type and Test Runner
 
 Check for common test configurations:
 
@@ -20,7 +35,7 @@ Check for common test configurations:
 ls -la Makefile package.json pyproject.toml Cargo.toml go.mod 2>/dev/null | head -20
 ```
 
-### 2. Run Tests
+### 3. Run Tests
 
 Based on project type, run the appropriate commands:
 
@@ -54,7 +69,7 @@ cargo test $ARGUMENTS
 go test ./... $ARGUMENTS
 ```
 
-### 3. Run Linting (if available)
+### 4. Run Linting (if available)
 
 Also check code quality:
 
@@ -73,7 +88,7 @@ npm run lint 2>/dev/null || echo "No lint script"
 ruff check . 2>/dev/null || flake8 . 2>/dev/null || echo "No linter configured"
 ```
 
-### 4. Report Results
+### 5. Report Results
 
 Provide a clear summary:
 
@@ -100,7 +115,7 @@ Provide a clear summary:
 - [Any suggestions for fixing failures]
 ```
 
-### 5. If Tests Fail
+### 6. If Tests Fail
 
 When tests fail:
 1. Identify the root cause
@@ -114,3 +129,12 @@ When tests fail:
 - Run tests after pulling changes
 - If tests are slow, mention which subset to run for quick feedback
 - Check for flaky tests (tests that sometimes pass, sometimes fail)
+
+## Related Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/coderabbit` | Run CodeRabbit CLI review after tests pass |
+| `/docs-review` | Check if docs need updates |
+| `/pr` | Create PR after all checks pass |
+| `/shipit` | Run all remaining steps and ship to prod |

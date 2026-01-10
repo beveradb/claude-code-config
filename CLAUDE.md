@@ -23,10 +23,23 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 /pr            # Create PR (auto-adds @coderabbitai ignore)
 ```
 
-### Maintenance
+### Ship It All (one command)
 ```
-/worktree-cleanup   # Clean up merged worktrees periodically
-/docs-maintain      # Periodic documentation health check
+/shipit        # Assess progress, run remaining steps, merge, deploy, verify prod
+```
+Use `/shipit` when returning to a session where implementation is done. It intelligently skips completed steps and runs: test → coderabbit → docs-review → pr → merge → wait for deploy → verify prod health → test new functionality.
+
+Options: `--skip-prod-test` (skip prod testing), `--dry-run` (preview only)
+
+### After Shipping
+```
+/cleanup            # Clean up current worktree after PR merged (end of session)
+```
+
+### Periodic Maintenance
+```
+/tidy-all-worktrees # Review ALL worktrees, clean merged, organize (interactive)
+/docs-maintain      # Documentation health check
 ```
 
 ## Key Rules
@@ -52,4 +65,5 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 | Start | `/new-worktree <desc>` |
 | Build | `/plan` → `/implement` → `/test` |
 | Ship | `/docs-review` → `/coderabbit` → `/pr` |
-| Clean | `/worktree-cleanup` |
+| Ship (one cmd) | `/shipit` (assesses + completes all remaining steps) |
+| Clean up | `/cleanup` (current worktree) or `/tidy-all-worktrees` (all) |

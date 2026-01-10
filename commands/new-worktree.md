@@ -68,11 +68,16 @@ Or open in a new terminal/editor.
 
 1. `/plan <feature>` - Create implementation plan
 2. `/implement` - Implement from plan
+3. `/shipit` - Ship it all (test → review → docs → PR → merge → deploy → verify)
+
+Or run individual steps:
 3. `/test` - Run tests
-4. `/docs-review` - Check docs before PR
-5. `/coderabbit` - Run CodeRabbit CLI locally, fix issues
+4. `/coderabbit` - Run CodeRabbit CLI locally, fix issues
+5. `/docs-review` - Check docs before PR
 6. `/pr` - Create PR (auto-ignores CodeRabbit bot)
-7. `/worktree-cleanup` - Clean up after merge
+
+After merge:
+7. `/cleanup` - Clean up this worktree
 ```
 
 ### Step 5: Read Project Context
@@ -105,16 +110,19 @@ Then output the rename command as the final line:
 |---------|-------------|
 | `/plan` | Create a detailed implementation plan |
 | `/implement` | Execute a plan step by step |
+| `/shipit` | Ship it all - test, review, docs, PR, merge, deploy, verify |
 | `/test` | Run tests and check coverage |
 | `/docs-review` | Update docs before merging |
 | `/docs-maintain` | Periodic documentation cleanup |
 | `/coderabbit` | Run CodeRabbit CLI locally before PR |
 | `/pr` | Create PR with @coderabbitai ignore |
-| `/worktree-cleanup` | Clean up merged worktrees |
+| `/cleanup` | Clean up current worktree after PR merged |
+| `/tidy-all-worktrees` | Review and clean up ALL worktrees (periodic) |
 
 ## Notes
 
 - Each worktree is isolated - work on multiple features in parallel
 - Always commit your work in the worktree before switching
-- Use `/worktree-cleanup` periodically to remove merged branches
+- Use `/cleanup` at end of session to clean up the current worktree
+- Use `/tidy-all-worktrees` periodically to review all worktrees
 - The worktree folder is a sibling to the main repo folder
