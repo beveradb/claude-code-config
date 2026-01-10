@@ -40,6 +40,7 @@ Options: `--skip-prod-test` (skip prod testing), `--dry-run` (preview only)
 ```
 /tidy-all-worktrees # Review ALL worktrees, clean merged, organize (interactive)
 /docs-maintain      # Documentation health check
+/fix-main           # Fix accidental changes in main worktree
 ```
 
 ## Key Rules
@@ -67,3 +68,4 @@ Options: `--skip-prod-test` (skip prod testing), `--dry-run` (preview only)
 | Ship | `/docs-review` → `/coderabbit` → `/pr` |
 | Ship (one cmd) | `/shipit` (assesses + completes all remaining steps) |
 | Clean up | `/cleanup` (current worktree) or `/tidy-all-worktrees` (all) |
+| Troubleshoot | `/fix-main` (if main worktree has accidental changes) |
