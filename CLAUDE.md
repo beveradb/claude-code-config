@@ -6,7 +6,7 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 
 ### Starting Work
 ```
-/new-worktree <description>   # Always start new work in isolated worktree
+/start <description>   # Always start new work in isolated worktree
 ```
 
 ### Development Cycle
@@ -27,7 +27,7 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 ```
 /shipit        # Assess progress, run remaining steps, merge, deploy, verify prod
 ```
-Use `/shipit` when returning to a session where implementation is done. It intelligently skips completed steps and runs: test → coderabbit → docs-review → pr → merge → wait for deploy → verify prod health → test new functionality.
+Use `/shipit` when returning to a session where implementation is done. It intelligently skips completed steps and runs: test → coderabbit → docs-review → version bump → pr → merge → wait for deploy → verify prod health → test new functionality.
 
 Options: `--skip-prod-test` (skip prod testing), `--dry-run` (preview only)
 
@@ -44,7 +44,7 @@ Options: `--skip-prod-test` (skip prod testing), `--dry-run` (preview only)
 
 ## Key Rules
 
-1. **Always use worktrees** - Never commit directly to main. Start with `/new-worktree`.
+1. **Always use worktrees** - Never commit directly to main. Start with `/start`.
 
 2. **Review before PR, not after** - Run `/coderabbit` locally before `/pr`. This runs `coderabbit --prompt-only` for efficient LLM-friendly output.
 
@@ -62,7 +62,7 @@ Options: `--skip-prod-test` (skip prod testing), `--dry-run` (preview only)
 
 | Phase | Commands |
 |-------|----------|
-| Start | `/new-worktree <desc>` |
+| Start | `/start <desc>` |
 | Build | `/plan` → `/implement` → `/test` |
 | Ship | `/docs-review` → `/coderabbit` → `/pr` |
 | Ship (one cmd) | `/shipit` (assesses + completes all remaining steps) |

@@ -17,11 +17,12 @@ This command picks up where previous work left off and runs the remaining steps:
 1. `/test` - Run tests (if not already passing)
 2. `/coderabbit` - Run CodeRabbit review and fix issues (if not done)
 3. `/docs-review` - Update documentation (if not done)
-4. `/pr` - Create PR (if not created)
-5. Merge PR once CI checks pass
-6. Wait for production deployment workflow
-7. Verify production health
-8. Test new functionality in production (if safe)
+4. **Bump version** - Increment version in project config (if applicable)
+5. `/pr` - Create PR (if not created)
+6. Merge PR once CI checks pass
+7. Wait for production deployment workflow
+8. Verify production health
+9. Test new functionality in production (if safe)
 
 ## Instructions
 
@@ -106,7 +107,62 @@ Run /docs-review skill
 - Make any needed documentation updates
 - Commit changes
 
-### Step 5: Create PR (if not exists)
+### Step 5: Bump Version (if applicable)
+
+Before creating the PR, check if the project has a version to bump:
+
+```bash
+# Check for common version files
+VERSION_FILE=""
+
+if [ -f "pyproject.toml" ]; then
+  VERSION_FILE="pyproject.toml"
+  CURRENT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')
+  echo "Found pyproject.toml with version: $CURRENT_VERSION"
+elif [ -f "package.json" ]; then
+  VERSION_FILE="package.json"
+  CURRENT_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*: "\(.*\)".*/\1/')
+  echo "Found package.json with version: $CURRENT_VERSION"
+elif [ -f "Cargo.toml" ]; then
+  VERSION_FILE="Cargo.toml"
+  CURRENT_VERSION=$(grep -E '^version\s*=' Cargo.toml | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')
+  echo "Found Cargo.toml with version: $CURRENT_VERSION"
+fi
+
+if [ -z "$VERSION_FILE" ]; then
+  echo "No version file found - skipping version bump"
+fi
+```
+
+If a version file is found:
+1. Analyze the changes to determine bump type:
+   - **Patch** (0.0.X): Bug fixes, minor changes, docs updates
+   - **Minor** (0.X.0): New features, non-breaking changes
+   - **Major** (X.0.0): Breaking changes (rare, usually explicit)
+
+2. Increment the version appropriately (default to patch for most changes)
+
+3. Update the version file:
+```bash
+# Example for pyproject.toml - adjust pattern for other files
+# Increment patch version: 1.2.3 -> 1.2.4
+NEW_VERSION=$(echo "$CURRENT_VERSION" | awk -F. '{print $1"."$2"."$3+1}')
+sed -i '' "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$VERSION_FILE"
+echo "Bumped version: $CURRENT_VERSION -> $NEW_VERSION"
+```
+
+4. Commit the version bump:
+```bash
+git add "$VERSION_FILE"
+git commit -m "chore: bump version to $NEW_VERSION"
+```
+
+**Skip version bump if:**
+- No version file exists
+- Changes are docs-only (no code changes)
+- Version was already bumped in this branch
+
+### Step 6: Create PR (if not exists)
 
 If no PR exists yet:
 ```
@@ -119,7 +175,7 @@ PR_NUMBER=$(gh pr list --head "$BRANCH" --json number -q '.[0].number')
 echo "PR #$PR_NUMBER created"
 ```
 
-### Step 6: Wait for CI and Merge
+### Step 7: Wait for CI and Merge
 
 Monitor CI checks:
 ```bash
@@ -160,7 +216,7 @@ gh pr merge "$PR_NUMBER" --squash --delete-branch
 echo "PR #$PR_NUMBER merged successfully"
 ```
 
-### Step 7: Wait for Production Deployment
+### Step 8: Wait for Production Deployment
 
 Look for deployment workflow and wait for it:
 ```bash
@@ -205,7 +261,7 @@ for i in {1..30}; do
 done
 ```
 
-### Step 8: Verify Production Health
+### Step 9: Verify Production Health
 
 Check production is healthy:
 ```bash
@@ -244,7 +300,7 @@ else
 fi
 ```
 
-### Step 9: Test New Functionality in Production
+### Step 10: Test New Functionality in Production
 
 **IMPORTANT:** Only test if it's safe to do so (read-only operations, test data, etc.)
 
@@ -268,7 +324,7 @@ git diff --stat main~2..main~1
    - Describe manual verification steps for UI changes
    - Note what the user should manually verify
 
-### Step 10: Final Report
+### Step 11: Final Report
 
 Provide a comprehensive summary:
 
@@ -279,6 +335,7 @@ Provide a comprehensive summary:
 - [x] Tests: Passed (X tests, Y% coverage)
 - [x] CodeRabbit: Reviewed, N issues fixed
 - [x] Docs: Updated docs/README.md
+- [x] Version: Bumped X.Y.Z -> X.Y.Z+1 (or "skipped - docs only" / "N/A - no version file")
 - [x] PR: #123 created and merged
 - [x] Deployment: Workflow completed successfully
 - [x] Health check: Production responding (HTTP 200)

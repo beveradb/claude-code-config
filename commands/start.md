@@ -17,12 +17,12 @@ Description provided: $ARGUMENTS
 
 If no description was provided (empty or blank $ARGUMENTS), respond with:
 ```
-Usage: /new-worktree <description of work>
+Usage: /start <description of work>
 
 Examples:
-  /new-worktree fix authentication bug
-  /new-worktree add export feature
-  /new-worktree investigate slow queries
+  /start fix authentication bug
+  /start add export feature
+  /start investigate slow queries
 ```
 Then stop.
 
