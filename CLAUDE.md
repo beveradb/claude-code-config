@@ -57,7 +57,7 @@ Options: `--skip-prod-test` (skip prod testing), `--dry-run` (preview only)
 
 6. **Docs stay current** - Run `/docs-review` before PR to check if docs need updates.
 
-7. **GitHub CLI auth** - When using the `gh` CLI instead of the GitHub MCP, run `gh auth switch` first to ensure you're using the correct account.
+7. **Use `gh` CLI for GitHub** - Always use the `gh` CLI for all GitHub operations (PRs, issues, repos, etc.). Do not use the GitHub MCP. The `GH_TOKEN` env var must be set (via direnv) to control which account is used per-directory.
 
 ## Quick Reference
 
