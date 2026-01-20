@@ -15,14 +15,15 @@ Assess what's already been done and complete the remaining workflow steps to shi
 
 This command picks up where previous work left off and runs the remaining steps:
 1. `/test` - Run tests (if not already passing)
-2. `/coderabbit` - Run CodeRabbit review and fix issues (if not done)
+2. `/test-review` - Assess test quality and coverage (if not done)
 3. `/docs-review` - Update documentation (if not done)
-4. **Bump version** - Increment version in project config (if applicable)
-5. `/pr` - Create PR (if not created)
-6. Merge PR once CI checks pass
-7. Wait for production deployment workflow
-8. Verify production health
-9. Test new functionality in production (if safe)
+4. `/coderabbit` - Run CodeRabbit review and fix issues (if not done)
+5. **Bump version** - Increment version in project config (if applicable)
+6. `/pr` - Create PR (if not created)
+7. Merge PR once CI checks pass
+8. Wait for production deployment workflow
+9. Verify production health
+10. Test new functionality in production (if safe)
 
 ## Instructions
 
@@ -74,8 +75,9 @@ Create a mental checklist based on evidence found:
 
 ### Already Done
 - [x/partial/?] Tests run - Evidence: [git log shows test fixes / no evidence]
-- [x/partial/?] CodeRabbit review - Evidence: [commit mentioning coderabbit / no evidence]
+- [x/partial/?] Test review - Evidence: [test files added/improved / coverage report / no evidence]
 - [x/partial/?] Docs reviewed - Evidence: [docs files changed / no evidence]
+- [x/partial/?] CodeRabbit review - Evidence: [commit mentioning coderabbit / no evidence]
 - [?] PR created - Evidence: [PR exists / no PR found]
 
 ### Remaining Steps
@@ -93,12 +95,13 @@ Run /test skill
 - If tests fail, fix issues and re-run
 - Continue only when tests pass
 
-**If CodeRabbit not done:**
+**If test review not done:**
 ```
-Run /coderabbit skill
+Run /test-review skill
 ```
-- Fix issues found (max 3 cycles)
-- Commit fixes
+- Assess test quality and coverage (target 70%+)
+- Add missing critical tests (P0/P1 items)
+- Commit any new tests
 
 **If docs not reviewed:**
 ```
@@ -106,6 +109,13 @@ Run /docs-review skill
 ```
 - Make any needed documentation updates
 - Commit changes
+
+**If CodeRabbit not done:**
+```
+Run /coderabbit skill
+```
+- Fix issues found (max 3 cycles)
+- Commit fixes
 
 ### Step 5: Bump Version (if applicable)
 
@@ -333,8 +343,9 @@ Provide a comprehensive summary:
 
 ### Workflow Steps Completed
 - [x] Tests: Passed (X tests, Y% coverage)
-- [x] CodeRabbit: Reviewed, N issues fixed
+- [x] Test review: Coverage at X%, N tests added
 - [x] Docs: Updated docs/README.md
+- [x] CodeRabbit: Reviewed, N issues fixed
 - [x] Version: Bumped X.Y.Z -> X.Y.Z+1 (or "skipped - docs only" / "N/A - no version file")
 - [x] PR: #123 created and merged
 - [x] Deployment: Workflow completed successfully
@@ -393,7 +404,8 @@ If `--dry-run` is in $ARGUMENTS:
 | Command | Purpose |
 |---------|---------|
 | `/test` | Run tests independently |
-| `/coderabbit` | Run CodeRabbit review independently |
+| `/test-review` | Assess test quality and coverage |
 | `/docs-review` | Review docs independently |
+| `/coderabbit` | Run CodeRabbit review independently |
 | `/pr` | Create PR independently |
 | `/cleanup` | Clean up current worktree after merge |
