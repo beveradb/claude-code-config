@@ -278,6 +278,75 @@ The optional `settings.json` configures:
 
 `CLAUDE.md` contains instructions Claude follows for all sessions. This is where workflow rules are defined. Modify to match your preferences.
 
+## Multi-Browser Playwright MCP Setup
+
+This config includes three separate Playwright MCP server instances, each with its own persistent browser profile. This enables controlling multiple independent browser windows simultaneously from Claude Code sessions.
+
+### How It Works
+
+Three MCP servers are registered at user scope (in `~/.claude.json`):
+
+| Server | Profile Directory | Tools Prefix |
+|--------|------------------|--------------|
+| `playwright-1` | `~/.playwright-profiles/profile-1` | `mcp__playwright-1__*` |
+| `playwright-2` | `~/.playwright-profiles/profile-2` | `mcp__playwright-2__*` |
+| `playwright-3` | `~/.playwright-profiles/profile-3` | `mcp__playwright-3__*` |
+
+Each instance:
+- Opens its own Chrome window
+- Has isolated cookies, local storage, and session data (via `--user-data-dir`)
+- Can be controlled independently and simultaneously
+
+### Setup
+
+The servers were added with:
+
+```bash
+# Create profile directories
+mkdir -p ~/.playwright-profiles/profile-{1,2,3}
+
+# Register each instance at user scope
+claude mcp add --transport stdio playwright-1 --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.playwright-profiles/profile-1
+claude mcp add --transport stdio playwright-2 --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.playwright-profiles/profile-2
+claude mcp add --transport stdio playwright-3 --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.playwright-profiles/profile-3
+```
+
+Then add permissions to `settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__playwright-1__*",
+      "mcp__playwright-2__*",
+      "mcp__playwright-3__*"
+    ]
+  }
+}
+```
+
+### Usage
+
+In any Claude Code session, specify which browser to use:
+
+```
+Use playwright-1 to navigate to example.com
+Use playwright-2 to review the staging site
+Use playwright-3 to check the production dashboard
+```
+
+All three can be used in parallel within a single session, or across separate terminal sessions.
+
+### Customization
+
+You can pass additional flags per-instance. For example, to add vision capabilities or use a specific browser:
+
+```bash
+claude mcp add --transport stdio playwright-1 --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.playwright-profiles/profile-1 --caps vision --browser chrome
+```
+
+Run `npx @playwright/mcp@latest --help` for all available options.
+
 ## Requirements
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed
