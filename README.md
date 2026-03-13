@@ -199,6 +199,12 @@ Or periodically:
 | `/fix-main` | Fix accidental changes in main worktree | When main has uncommitted changes |
 | `/docs-maintain` | Documentation health check | Periodic maintenance |
 
+### Setup & Configuration
+
+| Command | Description | When to Use |
+|---------|-------------|-------------|
+| `/setup-playwrights` | Set up multiple isolated Playwright browser instances | Browser automation setup |
+
 ## Typical Session
 
 ```bash
