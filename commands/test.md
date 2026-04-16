@@ -41,8 +41,9 @@ Based on project type, run the appropriate commands:
 
 **If Makefile exists with test target:**
 ```bash
-make test
+make test 2>&1 | tail -n 500
 ```
+Note: Piping prevents interactive prompts from blocking and keeps output manageable.
 
 **If package.json (Node.js/TypeScript):**
 ```bash

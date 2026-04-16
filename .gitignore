@@ -7,12 +7,18 @@ file-history/
 history.jsonl
 plans/
 plugins/
+policy-limits.json
+profiles/
 projects/
 projects.json
+sessions/
 settings.json
+settings.json.bak
 shell-snapshots/
 stats-cache.json
+statusline-command.sh
 statsig/
+tasks/
 todos/
 
 # Session and cache data
@@ -20,6 +26,11 @@ cache/
 paste-cache/
 session-env/
 telemetry/
+mcp-needs-auth-cache.json
+
+# Backups
+backups/
+*.backup-*
 
 # IDE and local files
 ide/

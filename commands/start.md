@@ -7,13 +7,20 @@ allowed-tools: Read, Glob, Bash, Task
 
 Create a new git worktree from the latest main branch for focused, isolated work.
 
-**Required argument:** A brief description of the work (e.g., "investigate prod auth flow")
+**Required argument:** A description of the work
 
 Description provided: $ARGUMENTS
 
 ## Instructions
 
-### Step 1: Validate Input
+### Step 1: Parse Arguments
+
+Parse $ARGUMENTS to extract:
+1. **Full task description** — the entire text, preserved verbatim
+
+The description serves **two purposes**:
+- 2-4 keywords are extracted for the branch/folder name
+- The **full text** is preserved as the task to work on after setup (see Step 6)
 
 If no description was provided (empty or blank $ARGUMENTS), respond with:
 ```
@@ -23,6 +30,7 @@ Examples:
   /start fix authentication bug
   /start add export feature
   /start investigate slow queries
+  /start I need to add a new API endpoint for user preferences that validates input and stores in the database
 ```
 Then stop.
 
@@ -48,39 +56,15 @@ git worktree add -b {branch-name} {worktree-path} origin/main
 Report success with:
 - Branch name created
 - Worktree path
-- Command to cd into it
 
-### Step 4: Provide Next Steps
-
-Tell the user:
-```
-## Worktree Created
-
-**Branch:** feat/sess-YYYYMMDD-HHMM-keywords
-**Location:** /path/to/worktree
-
-To start working:
-  cd {worktree-path}
-
-Or open in a new terminal/editor.
-
-## Suggested Workflow
-
-1. `/plan <feature>` - Create implementation plan
-2. `/implement` - Implement from plan
-3. `/shipit` - Ship it all (test → review → docs → PR → merge → deploy → verify)
-
-Or run individual steps:
-3. `/test` - Run tests
-4. `/coderabbit` - Run CodeRabbit CLI locally, fix issues
-5. `/docs-review` - Check docs before PR
-6. `/pr` - Create PR (auto-ignores CodeRabbit bot)
-
-After merge:
-7. `/cleanup` - Clean up this worktree
+**CRITICAL: Change the working directory to the new worktree immediately:**
+```bash
+cd {worktree-path}
 ```
 
-### Step 5: Read Project Context
+This ensures ALL subsequent file operations (Read, Edit, Write, Glob, Grep, Bash) happen in the worktree, not the main clone.
+
+### Step 4: Read Project Context
 
 Read key documentation if it exists:
 - `CLAUDE.md` (project instructions)
@@ -90,19 +74,25 @@ Read key documentation if it exists:
 
 If no docs exist, that's fine - just note it.
 
-### Step 6: Summarize and Confirm Ready
+### Step 5: Summarize and Proceed
 
-Provide:
-1. **Worktree created:** path and branch
-2. **Project context:** Key points from docs (if available)
-3. **Recent activity:** Notable recent changes (from docs or git log)
+Output a brief summary:
 
-End with: **"Ready for your task. What would you like to work on?"**
-
-Then output the rename command as the final line:
 ```
+## Worktree Created
+
+**Branch:** feat/sess-YYYYMMDD-HHMM-keywords
+**Working directory:** /path/to/worktree
+
 **Rename session:** /rename {keywords}
 ```
+
+Then **immediately proceed to work on the full task description** from Step 1.
+
+- If the description is short (a few words like "fix auth bug"), treat it as a task and begin investigating/working on it directly. Use `/plan` if non-trivial.
+- If the description is detailed (a sentence or more), treat it as if the user had typed it as their first message after worktree setup. Follow the task fully — plan, implement, whatever is appropriate.
+
+**Do NOT** ask "What would you like to work on?" — the user already told you in the arguments.
 
 ## Related Commands
 

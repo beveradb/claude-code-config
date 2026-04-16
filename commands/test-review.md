@@ -1,22 +1,26 @@
 ---
-description: Critically assess automated testing approach for current changes
+description: Assess and fix automated testing gaps for current changes
 allowed-tools: Read, Glob, Grep, Edit, Write, Bash
 ---
 
 # Test Review
 
-Critically assess the automated testing approach for changes in the current worktree/branch.
+Assess the automated testing approach for changes in the current worktree/branch, then **automatically implement improvements** to address any gaps found.
 
 **Goal:** Ensure tests are thorough, meaningful, and complete with:
 - 70%+ unit test coverage
 - Appropriate test types (integration, e2e, smoke, contract, mutation) where applicable
 - Confidence in correctness and maintainability
 
+**This command takes action.** After identifying gaps, it proceeds to write missing tests and improve existing ones. It does not stop at just reporting findings.
+
 ## When to Use
 
 - After implementing a feature, before `/docs-review`
-- When you want to improve test quality before shipping
+- When you want to ensure test quality before shipping
 - As part of the `/shipit` workflow
+
+**What happens:** This command analyzes your changes, identifies testing gaps, and then automatically writes/improves tests to address them. You can run it and walk away - it will both assess AND fix.
 
 ## Instructions
 
@@ -114,6 +118,35 @@ For each changed source file, evaluate:
 - [ ] Are tests isolated (no external dependencies)?
 - [ ] Do tests verify behavior, not implementation details?
 
+#### Caller-Callee Contract Tests (CRITICAL — easy to miss)
+
+When function A calls function B with data (dict, object, args), check:
+- [ ] Do tests verify A actually produces the inputs B expects?
+- [ ] Or do tests only test B in isolation with hand-crafted "ideal" inputs?
+
+**How to spot this gap:** For each new helper/utility function, find its callers. If the test for the helper
+builds its own input dict (e.g., `transcription_result={"lyrics_dir": path}`), check whether the real caller
+actually includes that key. If the caller's return value is an implicit dict (not a TypedDict/dataclass), this
+is a HIGH RISK gap — flag it as P0.
+
+**Especially dangerous with non-fatal code:** If the function is wrapped in try/except (designed to never crash),
+a test that only checks "didn't raise" provides zero signal. A broken input will silently do nothing, and the
+test will still pass. Always assert on the *positive outcome* (metadata was stored, value was computed), not
+just the absence of exceptions.
+
+Example of a gap that shipped in production:
+```python
+# Test passes — but transcribe_lyrics() never includes "lyrics_dir"!
+def test_stores_ids(tmp_path):
+    _store_metadata(result={"lyrics_dir": str(tmp_path)}, ...)  # hand-crafted
+    assert data["task_id"] == "abc"  # ✅ passes, ❌ useless
+
+# The missing contract test:
+def test_caller_provides_lyrics_dir():
+    result = transcribe_lyrics(...)
+    assert "lyrics_dir" in result  # Would have caught the bug
+```
+
 #### Integration Tests (where applicable)
 - [ ] Are module interactions tested?
 - [ ] Are database operations tested with test fixtures?
@@ -183,13 +216,18 @@ Rank test additions by impact:
 - Performance regression tests
 - Additional edge cases
 
-### Step 8: Write Missing Tests (Optional)
+### Step 8: Implement Test Improvements
 
-If requested or if gaps are critical:
-1. Start with P0 items
-2. Follow existing test patterns in the codebase
-3. Run tests after each addition to verify they pass
-4. Update coverage report
+**Automatically proceed to add/improve tests based on your findings.**
+
+For each identified gap (starting with P0, then P1):
+
+1. **Write the missing tests** following existing test patterns in the codebase
+2. **Run tests** after each addition to verify they pass
+3. **Continue until** all P0 and P1 gaps are addressed
+4. **Update coverage** and verify improvement
+
+Do NOT stop at just reporting gaps. The purpose of this command is to ensure tests are complete before shipping, which means fixing issues not just identifying them.
 
 ### Step 9: Report
 
@@ -232,10 +270,13 @@ Provide a comprehensive assessment:
 **Optional (P2):**
 - [list or "None"]
 
-### Recommendations
-1. [Specific actionable item]
-2. [Specific actionable item]
-3. [Specific actionable item]
+### Actions Taken
+1. [Test file added/modified]
+2. [Test file added/modified]
+3. [etc.]
+
+### Remaining Items (P2 - deferred)
+- [Optional improvements not implemented]
 
 ### Verdict
 - [ ] ✅ **Ready to ship** - Tests are thorough and meaningful
@@ -245,11 +286,13 @@ Provide a comprehensive assessment:
 
 ## Guidelines
 
+- **Take action, don't just report** - Implement P0 and P1 test improvements before finishing
 - **Be critical but constructive** - The goal is better tests, not perfection
 - **Focus on changed code** - Don't boil the ocean; assess what's new
 - **Consider risk** - Payment, auth, and data integrity need more testing
 - **Respect project conventions** - Follow existing test patterns
 - **Pragmatic over dogmatic** - 70% coverage is a guide, not a hard rule
+- **Defer P2 items** - Optional improvements can be skipped; focus on what matters for shipping
 
 ## Test Quality Checklist
 
