@@ -45,12 +45,21 @@ Then stop.
 
 ### Step 3: Create the Worktree
 
-```bash
-# Fetch latest from origin
-git fetch origin main
+Pick the base branch: prefer `origin/dev` (dev-first release flow), fall back to `origin/main` if the remote has no `dev` branch.
 
-# Create new worktree with branch based on origin/main
-git worktree add -b {branch-name} {worktree-path} origin/main
+```bash
+# Detect base branch
+if git ls-remote --exit-code --heads origin dev >/dev/null 2>&1; then
+  BASE=dev
+else
+  BASE=main
+fi
+
+# Fetch latest from origin
+git fetch origin "$BASE"
+
+# Create new worktree with branch based on origin/$BASE
+git worktree add -b {branch-name} {worktree-path} "origin/$BASE"
 ```
 
 Report success with:
