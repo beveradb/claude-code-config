@@ -32,6 +32,15 @@ mcp-needs-auth-cache.json
 backups/
 *.backup-*
 
+# PG&E-specific / sensitive
+commands/confluence.md
+commands/confluence-search.md
+settings.json.new
+settings.json.portkey-backup
+
+# Ephemeral
+.last-cleanup
+
 # IDE and local files
 ide/
 downloads/
