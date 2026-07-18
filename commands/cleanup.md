@@ -79,15 +79,23 @@ git status --porcelain
 
 5. **Only proceed with cleanup after resolving uncommitted files**
 
-### Step 4: Switch to Main
+### Step 4: Switch to a safe dir and refresh all mirrors
+
+Leave the worktree being removed, then refresh every read-only mirror (main + dev
+for product repos) so local `dev`/`main` are clean and current. The workspace root
+clone is never touched.
 
 ```bash
-# Go to the main worktree first
+# Move out of the worktree we're about to remove
 MAIN_WORKTREE=$(git worktree list | grep -E '\[main\]|\[master\]' | awk '{print $1}')
 cd "$MAIN_WORKTREE"
 
-# Pull latest
-git pull origin main
+# Workspace root = parent of any *-main-readonly clone
+ROOT="$(pwd)"
+while [ "$ROOT" != "/" ] && [ -z "$(ls -d "$ROOT"/*-main-readonly 2>/dev/null)" ]; do
+  ROOT="$(dirname "$ROOT")"
+done
+bash "$ROOT/docs/archive/scripts/refresh-mirrors.sh"
 ```
 
 ### Step 5: Remove the Worktree
