@@ -311,8 +311,8 @@ docs/
 ```
 
 Quarter is `YYYY-Qn` where `n = ((month - 1) // 3) + 1` (e.g. September → `2026-Q3`).
-The hook looks for `docs/sessions/` first, falling back to a legacy `docs/archive/`,
-then a bare `sessions/`.
+The hook looks for `docs/sessions/` first, falling back to a legacy `docs/archive/`
+for repos not yet migrated.
 
 ### Reproducing on a new machine
 

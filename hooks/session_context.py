@@ -14,12 +14,12 @@ import re
 import sys
 from pathlib import Path
 
-INJECT_ON = {"startup", "clear"}          # skip resume/compact: context retained
+INJECT_ON = {"startup", "clear"}          # skip resume/compact/fork: context retained
 NUM_DOCS = 3
 MAX_LINES_PER_DOC = 200
 MAX_BYTES_PER_DOC = 8_000
 MAX_TOTAL_BYTES = 30_000
-SESSION_DIR_CANDIDATES = ("docs/sessions", "docs/archive", "sessions")
+SESSION_DIR_CANDIDATES = ("docs/sessions", "docs/archive")
 
 DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 

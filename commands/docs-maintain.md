@@ -70,6 +70,7 @@ them). Migrate them into the typed, quarter-bucketed layout:
 **This is report-first: print the full proposed move plan and ask for
 confirmation before executing.** It is meant to be safe to run unattended
 against large repos.
+Note: `docs/archive/` is not forbidden outright — it remains the home for long-form reference digests that aren't sessions, designs, or plans (e.g. the lessons-learned archive in Section 6). Only session/design/plan docs get migrated into the typed folders.
 
 For each file in `docs/archive/*.md`:
 
@@ -162,7 +163,7 @@ Key takeaways from older lessons:
 Based on findings:
 1. **Fix structural issues** - Move/rename misplaced files
 2. **Update stale content** - Refresh outdated information
-3. **Archive completed work** - Move old docs to archive/
+3. **Archive completed work** - Move old session/design/plan docs into docs/{sessions,designs,plans}/<quarter>/ (see Section 3); leave reference digests in archive/
 4. **Remove obsolete content** - Delete truly unnecessary files
 5. **Archive old lessons** - If LESSONS-LEARNED.md is too large, archive older content
 

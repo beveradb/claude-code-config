@@ -76,22 +76,32 @@ mkdir -p "docs/sessions/${QUARTER}"
 # Write: docs/sessions/${QUARTER}/$(date +%Y-%m-%d)-topic.md
 ```
 
-Session record format:
+Session record format — use the SAME template as `/wrap`, so records in
+docs/sessions/ are consistent however they were created. These files are
+auto-loaded into future sessions by the SessionStart hook, so front-load what matters:
 ```markdown
-# Topic Name - YYYY-MM-DD
+# <Topic> — YYYY-MM-DD
+
+**Project:** <name>   **Branch/commit:** <if a repo, else n/a>   **Status:** <done / in-progress>
 
 ## Summary
 What was done and why.
 
-## Key Changes
-- Change 1
-- Change 2
+## What changed
+Concrete actions and their effects — code changes OR external state changed
+(accounts updated, data reconciled, resources created), commands run, config touched.
 
-## Decisions Made
-- Decision and rationale
+## Decisions & rationale
+- Decision — why.
 
-## Future Considerations
-- Things to keep in mind
+## Learnings / gotchas
+- Non-obvious things worth keeping.
+
+## Open threads & next steps
+- What's unfinished / where a future session should pick up.
+
+## Related docs
+- Links to relevant plans/designs/other session records.
 ```
 
 ### 4. Make Updates
