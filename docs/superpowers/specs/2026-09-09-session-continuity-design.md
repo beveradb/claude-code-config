@@ -99,14 +99,30 @@ alternative but `/wrap` chosen.)
 
 The everyday "document everything before I close this" command. Works in any folder.
 
+**Activities are not always code.** A session may have done budget reconciliation in a
+YNAB CLI folder, data cleanup, research, ops/admin tasks, or anything else. `/wrap` must
+capture *what was actually done and learned* — not assume code changes. Concretely:
+- The session record is written to a `sessions/` folder under the directory the Claude
+  session was started from (e.g. `ynab-cli/docs/sessions/<quarter>/`), regardless of
+  whether the activity touched code.
+- A repo being present does **not** mean the work was coding. `git diff`/`git log` are one
+  *optional* input used only when they reflect the actual work; the primary source is the
+  conversation itself — the actions taken, tools/commands run, external state changed
+  (e.g. "reconciled budget, updated N YNAB accounts to live balances"), and outcomes. In a
+  non-code session, the record leans entirely on that, not on a diff.
+
 **Behavior:**
-1. Reconstruct what the session did: `git log`/`git diff` if in a repo; otherwise reflect
-   on the conversation's actual work.
+1. Reconstruct what the session did from the conversation's actual work — the actions
+   taken, commands/tools run, external systems changed, and outcomes. Use `git log`/`git
+   diff` only as a supplementary input when in a repo *and* code actually changed; never
+   treat an empty/irrelevant diff as "nothing happened."
 2. Detect/establish the sessions dir: use existing `docs/sessions/` if present; else
    create `docs/sessions/<quarter>/` at the project root (works for non-code folders too).
 3. Write `docs/sessions/<quarter>/YYYY-MM-DD-<topic>.md` with sections:
    - **Summary** — what was done and why.
-   - **Key changes** — concrete changes (files, commands, config).
+   - **What changed** — concrete actions and their effects: code changes *or* external
+     state changed (accounts updated, data reconciled, resources created), commands run,
+     config touched.
    - **Decisions & rationale** — choices made and why.
    - **Learnings / gotchas** — non-obvious discoveries worth keeping.
    - **Open threads & next steps** — what's unfinished / where a future session should
