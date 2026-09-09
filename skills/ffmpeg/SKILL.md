@@ -108,6 +108,7 @@ transcription + word-level timestamps, and [sherpa-onnx](https://k2-fsa.github.i
 for speaker diarization (token-free, open ONNX models).
 
 ### One-time setup (needs network once)
+Run the `/setup-transcribe` slash command, or directly:
 ```bash
 bash ~/.claude/skills/ffmpeg/scripts/install-transcribe.sh
 ```
