@@ -64,3 +64,10 @@ gh-pr-status-cache.json
 
 # Project-specific commands (belong in their own project repos)
 commands/edge.md
+
+# ffmpeg transcribe: generated venv, downloaded models, and built bundles
+# (created by scripts/install-transcribe.sh — not source, and very large)
+skills/ffmpeg/.venv/
+skills/ffmpeg/models/
+skills/ffmpeg/*.tar.gz
+skills/ffmpeg/ffmpeg-transcribe-bundle.tar.gz

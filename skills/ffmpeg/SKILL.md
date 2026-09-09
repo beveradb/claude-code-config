@@ -1,6 +1,6 @@
 ---
 name: ffmpeg
-description: Edit videos, extract audio, create GIFs, add subtitles, compress, and manipulate media files using ffmpeg. Use whenever the user mentions video editing, audio extraction, format conversion, GIF creation, compression, watermarks, subtitles, thumbnails, video speed, stabilization, or any media file manipulation. Trigger on "edit video", "cut video", "trim", "merge videos", "extract audio", "make a GIF", "add subtitles", "compress", "resize video", "convert to mp4", "watermark", "slow motion", "timelapse", "thumbnail", "stabilize", "fade in/out", "replace audio", "change volume", or similar.
+description: Edit videos, extract audio, create GIFs, add subtitles, compress, manipulate media files, and transcribe/analyze speech content (meeting recordings, interviews) with speaker labels — all using ffmpeg and the fftools.py helper. Use whenever the user mentions video editing, audio extraction, format conversion, GIF creation, compression, watermarks, subtitles, thumbnails, video speed, stabilization, transcription, or understanding what is said in a video. Trigger on "edit video", "cut video", "trim", "merge videos", "extract audio", "make a GIF", "add subtitles", "compress", "resize video", "convert to mp4", "watermark", "slow motion", "timelapse", "thumbnail", "stabilize", "fade in/out", "replace audio", "change volume", "transcribe", "transcript", "diarize", "speaker labels", "who said what", "analyze this meeting/recording", "summarize this video", "what was said in", or similar.
 ---
 
 # FFmpeg Video Editor
@@ -88,7 +88,104 @@ python3 $SCRIPT fade input.mp4 output.mp4 --fade-in 2 --fade-out 3
 
 # STABILIZE — Fix shaky video (requires vidstab filter)
 python3 $SCRIPT stabilize input.mp4 output.mp4 --shakiness 7 --smoothing 15
+
+# TRANSCRIBE — Speech-to-text WITH speaker labels (offline; see Transcription section)
+python3 $SCRIPT transcribe meeting.mp4                       # → meeting.json/.srt/.txt
+python3 $SCRIPT transcribe meeting.mp4 --speakers 3          # tell it the speaker count
+python3 $SCRIPT transcribe meeting.mp4 --no-diarize          # transcript only, no speakers
 ```
+
+## Transcription & Analysis — understand what's *said* in a video
+
+Use the `transcribe` command to turn a meeting recording, interview, or any
+speech video/audio into a **speaker-labelled, timestamped transcript**. This is
+the tool for questions like "what was discussed?", "who said what?", "summarise
+this meeting", or "find where they talked about X".
+
+It runs **100% locally and offline** — audio never leaves the machine, no cloud
+API. Under the hood: [WhisperX](https://github.com/m-bain/whisperX) (large-v3) for
+transcription + word-level timestamps, and [sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/)
+for speaker diarization (token-free, open ONNX models).
+
+### One-time setup (needs network once)
+```bash
+bash ~/.claude/skills/ffmpeg/scripts/install-transcribe.sh
+```
+By default this **fetches a prebuilt bundle from the GitHub release** (fast: no
+model gating, no torch build) and installs it fully offline; if that's unavailable
+(release missing, or a platform whose wheels don't match) it automatically falls
+back to a from-scratch build. It creates an isolated Python 3.12 venv (via `uv`) and
+all models; afterwards `transcribe` needs no network. If the command reports the
+venv is missing, run this.
+
+Force a specific mode if you want:
+```bash
+bash install-transcribe.sh --release   # only the prebuilt release bundle
+bash install-transcribe.sh --build     # only a from-scratch build (HF + PyPI)
+HF_TOKEN=hf_xxx bash install-transcribe.sh --build   # also enable --diarizer pyannote
+```
+
+**Air-gapped / no HuggingFace access?** Build a self-contained bundle once on a
+connected machine, host it anywhere, and install from it with no HF/PyPI access:
+```bash
+# On a machine where install-transcribe.sh already ran:
+bash ~/.claude/skills/ffmpeg/scripts/make-bundle.sh ffmpeg-transcribe-bundle.tar.gz
+```
+The bundle packs all code, models, model caches, and Python wheels. If it exceeds
+2GB it is auto-split into `<name>.part-aa`, `<name>.part-ab`, … (each <2GB) to fit
+hosting/upload limits. Then, on the target machine (needs only `uv`, `ffmpeg`, and
+`python3.12`):
+```bash
+# Single-file bundle:
+bash install-transcribe.sh --bundle https://your.server/ffmpeg-transcribe-bundle.tar.gz
+
+# Split bundle — pass the parts in order (they are concatenated automatically):
+bash install-transcribe.sh --bundle \
+  https://your.server/ffmpeg-transcribe-bundle.tar.gz.part-aa \
+  https://your.server/ffmpeg-transcribe-bundle.tar.gz.part-ab
+```
+(To reassemble manually instead: `cat ffmpeg-transcribe-bundle.tar.gz.part-* > ffmpeg-transcribe-bundle.tar.gz`.)
+
+### Usage
+```bash
+# Full transcript + speaker labels (writes meeting.json, meeting.srt, meeting.txt)
+python3 $SCRIPT transcribe meeting.mp4
+
+# Options
+python3 $SCRIPT transcribe interview.mp4 --speakers 2          # known speaker count → better accuracy
+python3 $SCRIPT transcribe call.m4a --language en             # force language (skip auto-detect)
+python3 $SCRIPT transcribe lecture.mp4 --format txt           # only write .txt
+python3 $SCRIPT transcribe long.mp4 --model medium            # faster, less accurate
+python3 $SCRIPT transcribe q4.mp4 --diarizer pyannote         # higher-quality diarizer (needs HF token)
+python3 $SCRIPT transcribe notes.mp4 --no-diarize            # transcript only, no speaker separation
+python3 $SCRIPT transcribe raw.wav -o ./out/session          # custom output base path
+```
+
+### Output formats
+- **`.txt`** — human-readable, grouped by speaker turn. Read this to *understand
+  the content*: `[00:03:12] SPEAKER_01: ...`
+- **`.srt`** — subtitles with speaker tags, for burning back in (`subtitles` command)
+- **`.json`** — full structured data: every segment + word with start/end times
+  and speaker, for programmatic analysis (search, timelines, quoting with timestamps)
+
+### Meeting-analysis workflow
+```bash
+# 1. Transcribe with speaker labels
+python3 $SCRIPT transcribe meeting.mp4
+
+# 2. Read the transcript to analyse content
+#    (use the Read tool on meeting.txt, or parse meeting.json for timestamps)
+
+# 3. From here you can summarise, extract action items, find who-said-what,
+#    or jump to a moment: pair a JSON timestamp with `cut`/`thumbnail`.
+python3 $SCRIPT cut meeting.mp4 clip.mp4 --start 00:12:30 --end 00:14:00
+```
+
+Notes:
+- Transcription runs on **CPU** (CTranslate2 has no GPU path on Apple Silicon), so
+  large-v3 is roughly 1–2× realtime. A 1-hour meeting ≈ 30–60 min to process — fine
+  to run in the background. Use `--model medium` or `distil-large-v3` for speed.
+- Passing `--speakers N` (when you know the count) noticeably improves diarization.
 
 ## Standard Workflow
 

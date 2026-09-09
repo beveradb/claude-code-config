@@ -454,6 +454,102 @@ def cmd_stabilize(args):
                        "output": args.output}))
 
 
+SKILL_DIR = Path(__file__).resolve().parent.parent
+VENV_PYTHON = SKILL_DIR / ".venv" / "bin" / "python"
+MODELS_DIR = SKILL_DIR / "models"
+WORKER = Path(__file__).resolve().parent / "transcribe_worker.py"
+SEG_MODEL = MODELS_DIR / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
+EMB_MODEL = MODELS_DIR / "nemo_en_titanet_large.onnx"
+
+
+def cmd_transcribe(args):
+    """Transcribe + diarize a media file, fully offline (WhisperX + sherpa-onnx)."""
+    if not os.path.exists(args.input):
+        print(json.dumps({"status": "error", "error": f"No such file: {args.input}"}))
+        return
+    if not VENV_PYTHON.exists():
+        print(json.dumps({
+            "status": "error",
+            "error": "Transcription venv not installed.",
+            "fix": f"Run: bash {SKILL_DIR / 'scripts' / 'install-transcribe.sh'}",
+        }))
+        return
+
+    diarizer = "none" if args.no_diarize else args.diarizer
+    if diarizer == "sherpa" and not (SEG_MODEL.exists() and EMB_MODEL.exists()):
+        print(json.dumps({
+            "status": "error",
+            "error": "sherpa-onnx diarization models missing.",
+            "fix": f"Run: bash {SKILL_DIR / 'scripts' / 'install-transcribe.sh'}",
+        }))
+        return
+
+    # Output base: explicit --output (strip extension) or alongside the input.
+    if args.output:
+        output_base = os.path.splitext(args.output)[0]
+    else:
+        output_base = os.path.splitext(os.path.abspath(args.input))[0]
+
+    # Step 1 — extract 16kHz mono WAV (what both whisperx and the diarizer expect).
+    tmp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+    extract = run_cmd([
+        "ffmpeg", "-y", "-i", args.input,
+        "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", tmp_wav,
+    ], timeout=1800)
+    if extract["returncode"] != 0:
+        os.unlink(tmp_wav)
+        print(json.dumps({"status": "error", "error": "audio extraction failed",
+                           "stderr": extract["stderr"][-400:]}))
+        return
+
+    # Step 2 — run the worker inside the venv.
+    cmd = [
+        str(VENV_PYTHON), str(WORKER),
+        "--audio", tmp_wav,
+        "--output-base", output_base,
+        "--model", args.model,
+        "--diarizer", diarizer,
+        "--formats", args.format,
+        "--speakers", str(args.speakers or 0),
+        "--seg-model", str(SEG_MODEL),
+        "--emb-model", str(EMB_MODEL),
+    ]
+    if args.language:
+        cmd.extend(["--language", args.language])
+    if args.compute_type:
+        cmd.extend(["--compute-type", args.compute_type])
+    if args.allow_download:
+        cmd.append("--allow-download")
+    hf_token = args.hf_token or os.environ.get("HF_TOKEN")
+    if diarizer == "pyannote" and hf_token:
+        cmd.extend(["--hf-token", hf_token])
+
+    # Long recordings on CPU can take a while; stream nothing, just wait.
+    result = run_cmd(cmd, timeout=args.timeout, capture=True)
+    os.unlink(tmp_wav)
+
+    if result["returncode"] != 0:
+        print(json.dumps({"status": "error", "error": "transcription failed",
+                           "stderr": result["stderr"][-1000:]}))
+        return
+
+    # Worker prints a JSON summary on its last stdout line.
+    line = result["stdout"].strip().splitlines()[-1] if result["stdout"].strip() else "{}"
+    try:
+        summary = json.loads(line)
+    except json.JSONDecodeError:
+        summary = {"status": "ok", "raw": result["stdout"][-1000:]}
+    # Surface only non-benign stderr lines (torchcodec/lightning/matplotlib noise is expected).
+    benign = ("torchcodec", "libavutil", "dlopen", "Referenced from", "Reason:",
+              "traceback", "warnings.warn", "Lightning automatically", "font cache",
+              "UserWarning", "* fix", "* set", "@rpath", "'/opt/homebrew")
+    notes = [ln for ln in result["stderr"].splitlines()
+             if ln.strip() and not any(b in ln for b in benign)]
+    if notes:
+        summary["notes"] = notes[-5:]
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+
+
 def main():
     parser = argparse.ArgumentParser(description="fftools — High-level ffmpeg wrapper")
     subparsers = parser.add_subparsers(dest="command")
@@ -588,6 +684,23 @@ def main():
     p.add_argument("--shakiness", type=int, default=5, help="1-10, detection sensitivity")
     p.add_argument("--smoothing", type=int, default=10, help="Smoothing strength")
 
+    # transcribe
+    p = subparsers.add_parser("transcribe",
+                              help="Transcribe + diarize speech (offline WhisperX + sherpa-onnx)")
+    p.add_argument("input")
+    p.add_argument("--output", "-o", help="Output base path (extensions added). Default: alongside input")
+    p.add_argument("--model", default="large-v3", help="Whisper model (default large-v3)")
+    p.add_argument("--language", "-l", help="Force language code (e.g. en); auto-detect if unset")
+    p.add_argument("--diarizer", default="sherpa", choices=["sherpa", "pyannote"],
+                   help="sherpa = token-free (default); pyannote = needs HF token")
+    p.add_argument("--no-diarize", action="store_true", help="Transcript only, no speaker labels")
+    p.add_argument("--speakers", "-n", type=int, help="Known speaker count (default: auto)")
+    p.add_argument("--format", "-f", default="json,srt,txt", help="Output formats (json,srt,txt)")
+    p.add_argument("--compute-type", help="ctranslate2 compute type (int8 default, float32 for accuracy)")
+    p.add_argument("--hf-token", help="HF token for --diarizer pyannote (or set HF_TOKEN env)")
+    p.add_argument("--allow-download", action="store_true", help="Permit online model downloads")
+    p.add_argument("--timeout", type=int, default=7200, help="Max seconds (default 7200)")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -602,6 +715,7 @@ def main():
         "convert": cmd_convert, "frames": cmd_frames,
         "audio-replace": cmd_audio_replace, "volume": cmd_volume,
         "fade": cmd_fade, "stabilize": cmd_stabilize,
+        "transcribe": cmd_transcribe,
     }
     commands[args.command](args)
 
