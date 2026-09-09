@@ -18,7 +18,7 @@ INJECT_ON = {"startup", "clear"}          # skip resume/compact: context retaine
 NUM_DOCS = 3
 MAX_LINES_PER_DOC = 200
 MAX_BYTES_PER_DOC = 8_000
-MAX_TOTAL_BYTES = 24_000
+MAX_TOTAL_BYTES = 30_000
 SESSION_DIR_CANDIDATES = ("docs/sessions", "docs/archive", "sessions")
 
 DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
@@ -82,7 +82,7 @@ def render(docs: list[Path], root: Path) -> str:
     out = [f"Recent session records for {root.name} "
            "(auto-loaded, read-only context):", ""]
     total = 0
-    for doc in docs:
+    for i, doc in enumerate(docs):
         try:
             body = _clip(doc.read_text(encoding="utf-8", errors="replace"))
         except OSError:
@@ -92,11 +92,11 @@ def render(docs: list[Path], root: Path) -> str:
         except ValueError:
             label = doc
         block = f"----- {label} -----\n{body}\n"
+        out.append(block)
         total += len(block.encode("utf-8"))
-        if total > MAX_TOTAL_BYTES:
+        if total > MAX_TOTAL_BYTES and i < len(docs) - 1:
             out.append("... [remaining records omitted to stay within budget]")
             break
-        out.append(block)
     return "\n".join(out).rstrip() + "\n"
 
 

@@ -71,6 +71,26 @@ def test_finds_dir_from_subdir_via_git_root():
         assert "ROOT" in sc.build_context(str(sub), "startup")
 
 
+def test_three_large_docs_all_present():
+    """All three ~8KB docs should be present even with framing overhead."""
+    with tempfile.TemporaryDirectory() as d:
+        # Create 3 docs, each ~8KB with distinct markers
+        for day, marker in [("01", "MARKER_ONE"), ("02", "MARKER_TWO"), ("03", "MARKER_THREE")]:
+            content = f"{marker}\n" + ("x" * 7990) + "\n"
+            _mk(d, f"docs/sessions/2026-Q3/2026-09-{day}-x.md", content)
+        out = sc.build_context(d, "startup")
+        assert "MARKER_ONE" in out, "First doc marker should be present"
+        assert "MARKER_TWO" in out, "Second doc marker should be present"
+        assert "MARKER_THREE" in out, "Third doc marker should be present"
+
+
+def test_skips_fork_source():
+    """Fork source should not inject context (fork inherits from parent)."""
+    with tempfile.TemporaryDirectory() as d:
+        _mk(d, "docs/sessions/2026-Q3/2026-09-09-x.md", "CONTENT\n")
+        assert sc.build_context(d, "fork") == ""
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]
