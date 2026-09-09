@@ -1,0 +1,3 @@
+interface:
+  display_name: "Claude + Codex Compatibility"
+  short_description: "Make a Claude project work with Claude Code and Codex"
