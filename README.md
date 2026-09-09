@@ -87,8 +87,10 @@ After installation, your `~/.claude` directory should contain:
 │   ├── cleanup.md        # Clean up worktree
 │   ├── tidy-all-worktrees.md  # Clean all worktrees
 │   ├── fix-main.md       # Fix main worktree
-│   └── docs-maintain.md  # Documentation maintenance
-└── settings.json         # Optional: model and plugin settings
+│   ├── docs-maintain.md  # Documentation maintenance
+│   └── wrap.md           # Write a session record (any project)
+├── hooks/                # SessionStart hook (session_context.py) — see Session Continuity
+└── settings.json         # Optional: model and plugin settings (gitignored)
 ```
 
 ## The Workflow
@@ -198,6 +200,7 @@ Or periodically:
 | `/tidy-all-worktrees` | Review and clean ALL worktrees | Periodic maintenance |
 | `/fix-main` | Fix accidental changes in main worktree | When main has uncommitted changes |
 | `/docs-maintain` | Documentation health check | Periodic maintenance |
+| `/wrap` | Write a session record for future sessions | End of any session (code or not) |
 
 ### Setup & Configuration
 
@@ -283,6 +286,66 @@ The optional `settings.json` configures:
 ### Global Instructions
 
 `CLAUDE.md` contains instructions Claude follows for all sessions. This is where workflow rules are defined. Modify to match your preferences.
+
+## Session Continuity (automatic session records)
+
+Every session can leave a durable, discoverable record of what was done and
+learned, and every new session automatically picks up recent records for the
+project it starts in — so context survives across sessions (and machines).
+
+**Components:**
+
+| Piece | What it does |
+|-------|--------------|
+| `/wrap` (`commands/wrap.md`) | Writes a session record to `docs/sessions/<YYYY-Qn>/YYYY-MM-DD-<topic>.md`. Works in ANY folder — git or not, code or not (e.g. a budget-reconciliation session, not just code changes). |
+| `SessionStart` hook (`hooks/session_context.py`) | On session start, reads the newest 3 session records for the current project and injects them into context automatically. Read-only; silent when there are none. |
+| `/docs-review`, `/docs-maintain` | Adopt/enforce the docs layout below. `/docs-maintain` can migrate a legacy flat `docs/archive/` into it (report-first). |
+
+**Docs layout convention (shared by all of the above):**
+
+```
+docs/
+├── sessions/<YYYY-Qn>/YYYY-MM-DD-<topic>.md   # session records (the hook reads these)
+├── designs/<YYYY-Qn>/                          # design & spec docs
+└── plans/<YYYY-Qn>/                            # implementation plans
+```
+
+Quarter is `YYYY-Qn` where `n = ((month - 1) // 3) + 1` (e.g. September → `2026-Q3`).
+The hook looks for `docs/sessions/` first, falling back to a legacy `docs/archive/`,
+then a bare `sessions/`.
+
+### Reproducing on a new machine
+
+`commands/wrap.md` and `hooks/session_context.py` are committed, so cloning this
+repo brings them along. **But the hook only fires once it is registered in
+`settings.json`, which is gitignored (it holds secrets).** After cloning on a
+new machine, add this entry under the `"hooks"` object in `~/.claude/settings.json`:
+
+```json
+"SessionStart": [
+  {
+    "hooks": [
+      { "type": "command", "command": "python3 \"$HOME/.claude/hooks/session_context.py\"" }
+    ]
+  }
+]
+```
+
+Then verify:
+
+```bash
+# Run the hook's own tests
+python3 ~/.claude/hooks/test_session_context.py   # expect: "All N tests passed."
+
+# Simulate a session start in a project that has session records
+mkdir -p /tmp/sc-check/docs/sessions/2026-Q3
+echo '# demo record' > /tmp/sc-check/docs/sessions/2026-Q3/2026-01-01-demo.md
+echo '{"cwd":"/tmp/sc-check","source":"startup"}' | python3 ~/.claude/hooks/session_context.py
+rm -rf /tmp/sc-check
+```
+
+Requires Python 3 (stdlib only). Design and full implementation plan:
+`docs/superpowers/specs/2026-09-09-session-continuity-design.md`.
 
 ## Multi-Browser Playwright MCP Setup
 

@@ -45,3 +45,10 @@ settings.json.portkey-backup
 ide/
 downloads/
 *.local
+
+# Python bytecode (hooks/)
+__pycache__/
+*.pyc
+
+# Subagent-driven-development scratch
+.superpowers/
