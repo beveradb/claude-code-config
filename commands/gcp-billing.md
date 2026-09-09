@@ -217,7 +217,7 @@ Search the current repo for infrastructure code to map costs to specific resourc
    - `terraform/` directory
    - Resource blocks
 
-3. **Cloud Run Services** (common in Aquarius)
+3. **Cloud Run Services**
    - Map `Cloud Run` costs to services in `modules/cloud_run.py`
    - Check service configs for CPU/memory allocations
 

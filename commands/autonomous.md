@@ -39,8 +39,8 @@ can without further input:
 ## Hard limits (these still apply — autonomy is bounded by them)
 
 - **Respect the project's release boundary.** If the project follows a
-  dev-first / staged release flow, the terminal state for a Claude session is
-  "merged to the integration branch + that deploy verified" — do NOT cut prod
+  staged / integration-branch release flow, the terminal state for a Claude
+  session is "merged to the integration branch + that deploy verified" — do NOT cut prod
   releases or merge release PRs to the production branch unless the project's
   own conventions explicitly authorize a session to do so. When in doubt, ship
   to the integration branch, verify, and leave the prod release for Andrew.

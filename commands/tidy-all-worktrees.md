@@ -18,40 +18,27 @@ Review all git worktrees, identify merged PRs for cleanup, and organize outstand
 
 ## Instructions
 
-### 1. Refresh All Read-Only Mirrors (run first)
-
-Before auditing worktrees, ensure every read-only mirror is clean and current and the
-dev mirrors exist. The workspace root clone is never touched.
-
-```bash
-ROOT="$(pwd)"
-while [ "$ROOT" != "/" ] && [ -z "$(ls -d "$ROOT"/*-main-readonly 2>/dev/null)" ]; do
-  ROOT="$(dirname "$ROOT")"
-done
-bash "$ROOT/docs/archive/scripts/refresh-mirrors.sh"
-```
-
-### 2. List All Worktrees
+### 1. List All Worktrees
 
 ```bash
 git worktree list
 ```
 
-### 3. Get Repository Info
+### 2. Get Repository Info
 
 ```bash
 git remote get-url origin
 ```
 Parse the owner/repo from the URL.
 
-### 4. Get PR Status for Each Branch
+### 3. Get PR Status for Each Branch
 
 For each worktree (excluding main):
 - Use `gh pr list --state all --limit 50 --json number,title,headRefName,state,mergedAt` or GitHub MCP tools
 - Match each worktree branch to its PR
 - Categorize: MERGED (can cleanup), OPEN (keep), NO PR (investigate)
 
-### 5. Categorize Worktrees
+### 4. Categorize Worktrees
 
 **Can be cleaned up (PRs merged):**
 - Worktrees where the associated PR has been merged
@@ -67,7 +54,7 @@ For each worktree (excluding main):
 - Flag for user attention
 - May be abandoned or local-only work
 
-### 6. Present Findings
+### 5. Present Findings
 
 Show a summary:
 ```
@@ -89,14 +76,14 @@ Show a summary:
 [path] - never remove
 ```
 
-### 7. Ask User for Action
+### 6. Ask User for Action
 
 Use AskUserQuestion to ask:
 - Clean up all merged worktrees?
 - Rename generic worktree names?
 - Investigate worktrees with no PR?
 
-### 8. Execute Cleanup
+### 7. Execute Cleanup
 
 If user approves:
 
@@ -124,7 +111,7 @@ git worktree prune
 git worktree prune
 ```
 
-### 9. Final Verification
+### 8. Final Verification
 
 ```bash
 git worktree list

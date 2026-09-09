@@ -27,6 +27,29 @@ This workflow enforces discipline through automation:
 | **Docs stay current** | Checked before every merge (`/docs-review`) |
 | **Ship with confidence** | One command does everything (`/shipit`) |
 
+## Keep this repo generic (command layering)
+
+This repo is the **generic, cross-project** command layer. It is cloned into every
+per-project Claude Code config dir, so **anything project-specific added here leaks
+into every project.** Commands resolve in this precedence:
+
+1. **Project override** — a project's own repo at `.claude/commands/<cmd>.md`, used
+   when the cwd is inside that project. Project-specific behaviour (a particular
+   release flow, environment names, branch conventions) belongs **here**.
+2. **Generic shared (this repo)** — the everywhere fallback. Keep it free of any
+   project's names, URLs, or workflow specifics.
+3. **Project `CLAUDE.md`** — narrative overrides.
+
+**Never copy a project's command up into this repo.** To make `/shipit` (or any
+command) behave differently for one project, add/edit it in that **project's** repo
+under `.claude/commands/`. A `pre-commit` hook (`githooks/pre-commit`) enforces this
+by rejecting staged `commands/*.md` that contain project-specific markers. Enable it
+per clone with:
+
+```bash
+git config core.hooksPath githooks
+```
+
 ## Quick Start
 
 ### Installation

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#
+# Keep the shared command layer generic.
+#
+# claude-code-config is the GENERIC, cross-project layer. Project-specific
+# commands (e.g. Aquarius dev-first release flow) belong in THAT project's own
+# repo under .claude/commands/, where they override the shared user-level
+# command when the cwd is inside the project. See CLAUDE.md "Command layering".
+#
+# This hook blocks a commit that stages project-specific (Aquarius) content into
+# commands/*.md. Bypass intentionally with `git commit --no-verify`.
+
+PATTERN='aquarius|peopleaquarius|aquabot|Aquarius-Human-AI|aquarius-base|\.aquarius-base|-main-readonly|-dev-readonly|workspace#[0-9]'
+
+fail=0
+while IFS= read -r f; do
+  case "$f" in
+    commands/*.md) ;;
+    *) continue ;;
+  esac
+  matches=$(git show ":$f" 2>/dev/null | grep -inE "$PATTERN")
+  if [ -n "$matches" ]; then
+    echo "✖ $f stages project-specific (Aquarius) content — the shared command layer must stay generic:" >&2
+    printf '%s\n' "$matches" | sed 's/^/    /' >&2
+    fail=1
+  fi
+done < <(git diff --cached --name-only --diff-filter=AM)
+
+if [ "$fail" -ne 0 ]; then
+  cat >&2 <<'EOF'
+
+Refusing the commit. claude-code-config is the GENERIC shared layer.
+Put project-specific commands in that project's own repo under .claude/commands/
+(they override the shared user-level command when cwd is inside that project).
+Bypass intentionally with:  git commit --no-verify
+EOF
+  exit 1
+fi
+exit 0
