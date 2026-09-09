@@ -52,3 +52,15 @@ __pycache__/
 
 # Subagent-driven-development scratch
 .superpowers/
+
+# Runtime/generated state
+daemon/
+daemon.log
+jobs/
+uploads/
+gh-pr-status-cache.json
+.last-update-result.json
+*.bak
+
+# Project-specific commands (belong in their own project repos)
+commands/edge.md

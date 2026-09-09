@@ -1,0 +1,4 @@
+interface:
+  display_name: "Worktree + PR Workflow"
+  short_description: "Start, build, ship, and clean up worktree-based changes"
+  default_prompt: "Use $worktree-pr-workflow to run the appropriate worktree or PR workflow action for this request."
