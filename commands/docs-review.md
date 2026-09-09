@@ -63,16 +63,20 @@ For each category, determine if updates are needed:
 - Changed workflows?
 - New commands or tools?
 
-### 3. Create Archive Entry (if significant work)
+### 3. Create Session Record (if significant work)
 
-For substantial completed features or investigations:
+For substantial completed features or investigations, write a session record
+into the typed, quarter-bucketed layout (`docs/sessions/<YYYY-Qn>/`):
 
 ```bash
-# Create archive doc with today's date
-# docs/archive/YYYY-MM-DD-topic.md
+# Compute current quarter and create the session-doc folder
+M=$(( 10#$(date +%m) )); Q=$(( (M - 1) / 3 + 1 ))
+QUARTER="$(date +%Y)-Q${Q}"
+mkdir -p "docs/sessions/${QUARTER}"
+# Write: docs/sessions/${QUARTER}/$(date +%Y-%m-%d)-topic.md
 ```
 
-Archive format:
+Session record format:
 ```markdown
 # Topic Name - YYYY-MM-DD
 
@@ -107,7 +111,7 @@ Provide a summary:
 
 ### Updates Made
 - [x] Updated docs/README.md - added new feature status
-- [x] Added docs/archive/2024-01-15-auth-refactor.md
+- [x] Added docs/sessions/2026-Q1/2026-01-15-auth-refactor.md
 - [ ] No changes needed to ARCHITECTURE.md
 
 ### Updates Skipped (with reason)
