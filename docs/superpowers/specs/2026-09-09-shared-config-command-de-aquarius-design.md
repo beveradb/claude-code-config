@@ -145,9 +145,33 @@ The current `~/.claude` working tree is a **mix**; handle each item deliberately
 
 - Edit + **commit straight to `main`** on `claude-code-config` (personal config repo, not a
   product repo), after showing Andrew the diff. Push.
-- `git pull` in the three sibling clones (`~/.claude-aquarius`, `~/.claude-nomadkaraoke`,
-  `~/.claude-life360`), checking each for its own dirty state first (the Aquarius clone may hold
-  the same uncommitted dev-first blocks; reconcile them to match `main`).
+
+### Propagation reality (discovered during implementation — do NOT `git pull`/`reset` the clones)
+
+The sibling clones are **not** plain clones to pull into. Their command dirs were hand-wired
+(Sep 2026) so that most commands **symlink back to `~/.claude/commands/`**:
+
+- `~/.claude-aquarius`: 17 command symlinks → `../../.claude/commands/*.md`, plus 9 **regular**
+  local files (its own overrides, incl. a dev-first `shipit`/`pr`/`start`). Pinned at `d9b9af9`.
+- `~/.claude-nomadkaraoke`: 15 symlinks + 5 regular. Pinned at `d187932`.
+- `~/.claude-life360`: **no symlinks**, 21 independent regular copies, pinned at `d187932`
+  (which **predates the contaminating `d9b9af9`** — so it was never contaminated).
+
+Consequences:
+
+- Fixing `~/.claude/commands/*.md` **auto-propagates** to the symlinked commands in
+  Aquarius/Nomad — nothing to pull. (Verified: the scrubbed `autonomous` text resolves through
+  the Aquarius symlink.)
+- The `T` (typechange) entries in those clones' `git status` are the intentional
+  regular-file→symlink divergence, **not** work to reconcile. A `git pull`/`reset --hard` would
+  fight the symlink layout — **don't**.
+- Aquarius keeps its dev-first `shipit`/`pr`/`start` because those are its own **regular** files
+  (not symlinks) and are also present as project-level overrides — untouched by the shared-layer
+  fix.
+- Life360 is independent + stale but generic; no action needed for this leak.
+- The `githooks/pre-commit` guard is enabled in `~/.claude` (the symlink source, where shared
+  commands are authored). Clones can enable it (`git config core.hooksPath githooks`) after they
+  next advance past `b045a2b`.
 
 ## Verification
 
