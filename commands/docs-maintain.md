@@ -34,7 +34,10 @@ docs/
 ├── DEVELOPMENT.md         # Dev setup, testing, deployment
 ├── API.md                 # API reference (if applicable)
 ├── LESSONS-LEARNED.md     # Accumulated wisdom
-└── archive/               # Historical docs (YYYY-MM-DD-topic.md)
+├── sessions/YYYY-Qn/      # Session records (YYYY-MM-DD-topic.md)
+├── designs/YYYY-Qn/       # Design & spec docs
+├── plans/YYYY-Qn/         # Implementation plans
+└── archive/               # Legacy flat store — migrate into the folders above
 
 CLAUDE.md                  # Project instructions for AI agents
 README.md                  # Project overview
@@ -58,12 +61,39 @@ git log --oneline -1 -- docs/ 2>/dev/null
 git log --oneline -1 -- "*.md" 2>/dev/null
 ```
 
-### 3. Archive Organization
+### 3. Archive Organization & Reorg
 
-If docs/archive/ exists:
-- Verify files use YYYY-MM-DD prefix
-- Check for docs that should be archived (completed features, old plans)
-- Remove truly obsolete content (empty files, duplicates)
+Large flat `docs/archive/` folders become unwieldy (GitHub struggles to render
+them). Migrate them into the typed, quarter-bucketed layout:
+`docs/{sessions,designs,plans}/<YYYY-Qn>/`.
+
+**This is report-first: print the full proposed move plan and ask for
+confirmation before executing.** It is meant to be safe to run unattended
+against large repos.
+
+For each file in `docs/archive/*.md`:
+
+1. **Classify by filename heuristic:**
+   - matches `*plan*` → `docs/plans/`
+   - matches `*design*` or `*spec*` → `docs/designs/`
+   - matches `*handoff*`, `*session*`, `*report*`, `*findings*`, or
+     `*investigation*` → `docs/sessions/`
+   - otherwise → **flag for manual classification** (do not guess; leave in place).
+2. **Determine the quarter bucket** from the `YYYY-MM-DD` filename prefix
+   (`Q = ((month - 1) // 3) + 1`). If a file has no date prefix, fall back to its
+   git first-commit date, then mtime; if still undated (e.g. a stable reference
+   doc like `capital-tier-strategy.md`), **leave it in place and flag it**.
+3. **Move with git to preserve history:**
+   ```bash
+   mkdir -p "docs/<type>/<YYYY-Qn>"
+   git mv "docs/archive/<file>.md" "docs/<type>/<YYYY-Qn>/<file>.md"
+   ```
+4. After moving, **check for references** to the old paths across the repo
+   (`grep -rn "docs/archive/<file>" .`) and update any that break.
+
+Also: verify remaining files use the `YYYY-MM-DD` prefix, remove truly obsolete
+content (empty files, exact duplicates), and flag any single folder that has
+grown large enough to warrant a finer split.
 
 ### 4. Cross-Reference Check
 
