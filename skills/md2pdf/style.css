@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400;1,700&family=Roboto+Mono:wght@400;500&display=swap');
+/* markdowntopdf.com-style theme for md-to-pdf — clean, professional, watermark-free */
+
+:root {
+  --ink: #2c3e50;         /* headings / dark navy */
+  --body: #34404b;        /* body text */
+  --muted: #7f8c9a;       /* blockquotes, captions */
+  --rule: #e1e4e8;        /* hairline borders */
+  --code-bg: #f4f5f7;     /* inline + block code bg */
+  --th-bg: #f6f8fa;       /* table header row */
+  --link: #2f6fdb;
+}
+
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body {
+  font-family: "Roboto", -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--body);
+  font-size: 11pt;
+  line-height: 1.55;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.6em 0 0.6em;
+}
+h1 { font-size: 24pt; margin-top: 0; letter-spacing: -0.01em; }
+h2 { font-size: 16pt; padding-bottom: 0.3em; border-bottom: 1px solid var(--rule); }
+h3 { font-size: 13pt; }
+h4 { font-size: 11.5pt; }
+
+p { margin: 0.7em 0; }
+
+/* Links */
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Lists */
+ul, ol { padding-left: 1.5em; margin: 0.6em 0; }
+li { margin: 0.25em 0; }
+
+/* Inline code */
+code {
+  font-family: "Roboto Mono", "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  background: var(--code-bg);
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  font-size: 0.86em;
+  color: #24292e;
+}
+
+/* Code blocks */
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 0.82em;
+  line-height: 1.45;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* Blockquotes */
+blockquote {
+  margin: 1em 0;
+  padding: 0.2em 1.1em;
+  color: var(--muted);
+  border-left: 4px solid var(--rule);
+  font-style: italic;
+}
+blockquote p { margin: 0.4em 0; }
+
+/* Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.1em 0;
+  font-size: 0.9em;
+}
+th, td {
+  border: 1px solid var(--rule);
+  padding: 8px 11px;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: var(--th-bg); color: var(--ink); font-weight: 600; }
+tr:nth-child(even) td { background: #fbfcfd; }
+
+/* Horizontal rule */
+hr { border: none; border-top: 1px solid var(--rule); margin: 1.8em 0; }
+
+/* Avoid awkward breaks */
+h1, h2, h3, h4 { break-after: avoid; }
+table, pre, blockquote { break-inside: avoid; }
+img { max-width: 100%; }

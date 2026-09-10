@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# md2pdf — render a Markdown file to a watermark-free, nicely-styled PDF.
+# Uses md-to-pdf (headless Chrome via Puppeteer) with a bundled theme.
+#
+# Portable: the stylesheet ships beside this script, and the browser is
+# auto-detected across macOS/Linux (falling back to Puppeteer's own Chromium).
+#
+# Usage:
+#   md2pdf input.md                 # -> input.pdf (beside the source)
+#   md2pdf input.md output.pdf      # -> explicit output path
+#   md2pdf --css other.css in.md    # override the stylesheet
+#
+# Override points:
+#   MD2PDF_CSS=/path/to.css         # default stylesheet
+#   MD2PDF_CHROME=/path/to/chrome   # force a specific browser binary
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Default theme: the copy bundled with this skill (travels with the repo clone).
+THEME="${MD2PDF_CSS:-$SKILL_DIR/style.css}"
+
+# Optional --css override
+if [[ "${1:-}" == "--css" ]]; then
+  THEME="$2"; shift 2
+fi
+
+SRC="${1:-}"
+if [[ -z "$SRC" || ! -f "$SRC" ]]; then
+  echo "md2pdf: give a Markdown file. Usage: md2pdf input.md [output.pdf]" >&2
+  exit 1
+fi
+DEST="${2:-}"
+
+if [[ ! -f "$THEME" ]]; then
+  echo "md2pdf: stylesheet not found: $THEME" >&2
+  exit 1
+fi
+
+command -v npx >/dev/null 2>&1 || { echo "md2pdf: node/npx is required (install Node.js)" >&2; exit 1; }
+
+# Find a Chrome/Chromium/Edge binary across platforms; empty = let Puppeteer use its own.
+detect_chrome() {
+  local c
+  for c in \
+    "${MD2PDF_CHROME:-}" \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+    "$(command -v google-chrome 2>/dev/null || true)" \
+    "$(command -v google-chrome-stable 2>/dev/null || true)" \
+    "$(command -v chromium 2>/dev/null || true)" \
+    "$(command -v chromium-browser 2>/dev/null || true)" \
+    "/usr/bin/google-chrome" "/usr/bin/chromium" "/usr/bin/chromium-browser"; do
+    [[ -n "$c" && -x "$c" ]] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
+}
+
+PDF_OPTS='{"format":"A4","margin":{"top":"22mm","bottom":"20mm","left":"18mm","right":"18mm"},"printBackground":true}'
+
+if CHROME="$(detect_chrome)"; then
+  # Reuse the system browser — no Chromium download needed.
+  LAUNCH="{\"executablePath\":\"$CHROME\"}"
+  PUPPETEER_SKIP_DOWNLOAD=true npx -y md-to-pdf \
+    --stylesheet "$THEME" \
+    --launch-options "$LAUNCH" \
+    --pdf-options "$PDF_OPTS" \
+    "$SRC"
+else
+  # No system browser found — let md-to-pdf/Puppeteer fetch and use its own Chromium.
+  echo "md2pdf: no system Chrome/Chromium found; using Puppeteer's bundled Chromium" >&2
+  npx -y md-to-pdf \
+    --stylesheet "$THEME" \
+    --pdf-options "$PDF_OPTS" \
+    "$SRC"
+fi
+
+# md-to-pdf writes <src>.pdf beside the source; move it if a dest was given.
+GENERATED="${SRC%.*}.pdf"
+if [[ -n "$DEST" && "$DEST" != "$GENERATED" ]]; then
+  mv -f "$GENERATED" "$DEST"
+  echo "md2pdf: wrote $DEST"
+else
+  echo "md2pdf: wrote $GENERATED"
+fi
