@@ -59,6 +59,8 @@ detect_chrome() {
   return 1
 }
 
+# md-to-pdf READS STDIN when stdin is not a terminal (scripts, Claude Code tool calls, CI), so it waits forever for
+# input and appears to hang. Always give it an empty stdin.
 PDF_OPTS='{"format":"A4","margin":{"top":"22mm","bottom":"20mm","left":"18mm","right":"18mm"},"printBackground":true}'
 
 if CHROME="$(detect_chrome)"; then
@@ -68,14 +70,14 @@ if CHROME="$(detect_chrome)"; then
     --stylesheet "$THEME" \
     --launch-options "$LAUNCH" \
     --pdf-options "$PDF_OPTS" \
-    "$SRC"
+    "$SRC" < /dev/null
 else
   # No system browser found — let md-to-pdf/Puppeteer fetch and use its own Chromium.
   echo "md2pdf: no system Chrome/Chromium found; using Puppeteer's bundled Chromium" >&2
   npx -y md-to-pdf \
     --stylesheet "$THEME" \
     --pdf-options "$PDF_OPTS" \
-    "$SRC"
+    "$SRC" < /dev/null
 fi
 
 # md-to-pdf writes <src>.pdf beside the source; move it if a dest was given.
