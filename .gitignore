@@ -71,3 +71,9 @@ skills/ffmpeg/.venv/
 skills/ffmpeg/models/
 skills/ffmpeg/*.tar.gz
 skills/ffmpeg/ffmpeg-transcribe-bundle.tar.gz
+
+# Per-config-dir runtime state (appears when CLAUDE_CONFIG_DIR points at a clone)
+/.claude.json
+/.claude.json.backup
+/remote-settings.json
+/policy-limits.json.stamp.json
