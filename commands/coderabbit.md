@@ -67,19 +67,20 @@ Record this as `$REVIEW_TYPE` for the remainder of the command.
 
 ### Step 3a: Run CodeRabbit Review (primary path)
 
-The installed CLI uses the **`review` subcommand**. Since CLI v0.7.x the scope is chosen with **boolean flags** — `--plain` and `--type` were removed (passing them fails immediately with `unknown option`). Plain text is now the default output. CodeRabbit can take 5-30+ minutes, so cap it with `timeout` and run it in the background if the foreground Bash cap is shorter than the timeout.
+The installed CLI uses the **`review` subcommand**. Since CLI v0.7.x the scope is chosen with **boolean flags** — `--plain` and `--type` were removed (passing them fails immediately with `unknown option`). Plain text is now the default output. Untracked (never `git add`-ed) files are **not** reviewed unless you pass `--include-untracked`. CodeRabbit can take 5-30+ minutes, so cap it with `timeout` and run it in the background if the foreground Bash cap is shorter than the timeout.
 
 Map `$REVIEW_TYPE` to a scope flag:
 - `committed` → `--committed`
-- `uncommitted` → `--uncommitted`
+- `uncommitted` → `--uncommitted --include-untracked` (so brand-new files are reviewed too)
 - all tracked changes → no scope flag (add `--include-untracked` to also review new, un-added files)
 
 ```bash
-# Correct invocation for CLI v0.7.x (verified on 0.7.6):
-#   coderabbit review [--committed|--uncommitted] [--base main]
+# Correct invocation for CLI v0.7.x/v0.8.x (verified on 0.8.2):
+#   coderabbit review [--committed|--uncommitted [--include-untracked]] [--base main]
 # Add --agent for structured findings you want to parse programmatically.
 # If unsure of the flags on the installed version, check `coderabbit review --help` first.
 SCOPE_FLAG="--$REVIEW_TYPE"   # --committed or --uncommitted
+[ "$REVIEW_TYPE" = uncommitted ] && SCOPE_FLAG="$SCOPE_FLAG --include-untracked"
 timeout 2100 coderabbit review $SCOPE_FLAG --base main 2>&1
 CODERABBIT_EXIT=$?
 ```
@@ -150,7 +151,7 @@ git commit -m "fix: address code review feedback
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-Between cycles, re-run the same reviewer that produced the findings. If CodeRabbit becomes unavailable mid-cycle, fall back to Superpowers review for the remaining cycles.
+Between cycles, re-run the same reviewer that produced the findings. For CodeRabbit, add `--fresh` to every re-run — without it v0.8.x reuses its checkpoint and may report "No new findings" without actually reviewing the fixes. If CodeRabbit becomes unavailable mid-cycle, fall back to Superpowers review for the remaining cycles.
 
 If issues remain after 3 cycles, note them but don't chase perfection.
 
@@ -158,7 +159,7 @@ If issues remain after 3 cycles, note them but don't chase perfection.
 
 Run one more quick check with whichever reviewer is currently healthy:
 
-- CodeRabbit: `timeout 2100 coderabbit review --$REVIEW_TYPE --base main 2>&1 | tail -60`
+- CodeRabbit: `set -o pipefail; timeout 2100 coderabbit review $SCOPE_FLAG --fresh --base main 2>&1 | tail -60` (`pipefail` so a failed/timed-out review isn't masked by `tail`'s exit 0)
 - Superpowers: re-invoke `superpowers:requesting-code-review` asking only for remaining high-confidence issues.
 
 Report final status.
@@ -190,7 +191,9 @@ Report final status.
 ## Tips
 
 - Run this BEFORE creating a PR, not after.
-- Correct CLI invocation (v0.7.x) is `coderabbit review --committed|--uncommitted [--base main]` — `--plain`, `--type` and `--prompt-only` no longer exist; plain text is the default.
+- Correct CLI invocation (v0.7.x/v0.8.x) is `coderabbit review --committed|--uncommitted [--include-untracked] [--base main]` — `--plain`, `--type` and `--prompt-only` no longer exist; plain text is the default.
+- Since v0.8.x, re-runs reuse a local checkpoint and may perform **no new review at all** (output says "No fresh detailed file review was performed" / "No new findings") — that is NOT a clean bill of health. Always add `--fresh` when re-reviewing after fixes. Use `coderabbit review findings` to re-print the last results without a new run.
+- Keep the CLI current with `coderabbit update`.
 - Use `--agent` when you want structured findings to parse programmatically.
 - CodeRabbit runs can take 30+ min — run in the background and monitor rather than blocking.
 - Don't chase perfection — 2-3 cycles max. Focus on real issues, skip pure style nitpicks.

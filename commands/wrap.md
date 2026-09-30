@@ -6,8 +6,10 @@ allowed-tools: Read, Glob, Grep, Edit, Write, Bash
 # Wrap Up Session
 
 Write a thorough, self-contained record of everything done and learned in this
-session, so a future Claude session (or Andrew) can pick up with full context.
-Works in ANY folder — git or not, code or not.
+session, so a future Claude session (or Andrew) can pick up with full context —
+then leave the working tree clean by committing and pushing the loose changes
+(the session record and other safe edits) so the local clone and `main` are up
+to date. Works in ANY folder — git or not, code or not.
 
 ## Core principle: activities are not always code
 
@@ -89,13 +91,65 @@ Concrete actions and their effects — code changes OR external state changed
 - Links to relevant plans/designs/other session records.
 ```
 
-### 4. Report
+### 4. Leave the working tree clean and up to date
 
-Print the path written and a one-line summary. Do NOT modify
+The point of wrapping is to end the session with **nothing dangling** — the
+session record you just wrote (and any other loose changes) should be committed
+and pushed, so the local clone and `main` are clean and current for next time.
+
+Only do this in a git repo. If not a repo, skip to Report.
+
+1. **Survey the working tree:**
+   ```bash
+   git branch --show-current
+   git status --short
+   git status --short --untracked-files=all   # include untracked
+   ```
+2. **Review every change** — read the diff of what's staged/unstaged and inspect
+   untracked files so you know exactly what you'd be committing. Never blind-add:
+   ```bash
+   git diff
+   git diff --cached
+   # for each untracked file that matters, look at it before adding
+   ```
+3. **Decide what belongs on `main`.** Classify the changes:
+   - **Session records / docs / notes** (this command's output and similar) →
+     safe to commit + push to `main` directly.
+   - **Substantive code changes on `main`** → these usually should have gone
+     through a worktree + PR, not landed on `main`. Do **not** blindly commit
+     them. Surface them to Andrew (this is `/fix-main` territory) and let him
+     decide; only proceed if he confirms.
+   - **Stray junk** (accidental files, scratch output) → point it out; don't
+     commit it.
+4. **Guard the branch.** Only commit-and-push-to-`main` when the current branch
+   IS the repo's default branch (check with
+   `git symbolic-ref --short refs/remotes/origin/HEAD` — usually `origin/main`). If you're on a feature branch
+   or inside a worktree, do **not** push to `main` — just report that the record
+   was written and leave committing to the branch's normal flow (`/pr`, `/shipit`).
+5. **Commit + push** the safe changes:
+   ```bash
+   git pull --ff-only                    # sync FIRST; if this fails, stop and report — don't commit
+   git add <the reviewed paths>          # explicit paths, not `git add -A` blindly
+   git commit -m "<concise message, e.g. 'docs: session record — <topic>'>" -- <the reviewed paths>
+   git push
+   ```
+   The path-limited `git commit -- <paths>` ensures anything else that was
+   already staged is **not** swept into the commit. If the push is rejected
+   because `main` moved, `git pull --rebase` and push again; if that conflicts,
+   stop and report rather than forcing.
+   End the commit message with the repo's usual trailer if it has one
+   (e.g. a `Co-Authored-By: Claude …` line).
+6. **Confirm clean:** run `git status` again and verify the tree is clean and the
+   branch is not ahead of its upstream. Report the final state.
+
+### 5. Report
+
+Print the path written, the commit(s) pushed (or why nothing was committed), the
+final `git status` state, and a one-line summary. Do NOT modify
 README/ARCHITECTURE/etc. — that is `/docs-review`'s job.
 
 ## Guidelines
-- Lightweight and universal: this command only writes the session record.
+- Lightweight and universal: write the session record, then tidy the git tree.
 - Concise and factual; write for a future session with zero context.
 - The record is auto-loaded by the SessionStart hook next time — front-load
   what matters most.
