@@ -67,24 +67,32 @@ Record this as `$REVIEW_TYPE` for the remainder of the command.
 
 ### Step 3a: Run CodeRabbit Review (primary path)
 
-The installed CLI uses the **`review` subcommand** (there is no `--prompt-only` flag). Use `--plain` for clean, token-efficient text output. CodeRabbit can take 7-30+ minutes, so cap it with `timeout` and run it in the background if the foreground Bash cap is shorter than the timeout.
+The installed CLI uses the **`review` subcommand**. Since CLI v0.7.x the scope is chosen with **boolean flags** — `--plain` and `--type` were removed (passing them fails immediately with `unknown option`). Plain text is now the default output. CodeRabbit can take 5-30+ minutes, so cap it with `timeout` and run it in the background if the foreground Bash cap is shorter than the timeout.
+
+Map `$REVIEW_TYPE` to a scope flag:
+- `committed` → `--committed`
+- `uncommitted` → `--uncommitted`
+- all tracked changes → no scope flag (add `--include-untracked` to also review new, un-added files)
 
 ```bash
-# Correct invocation for CLI v0.6.x:
-#   coderabbit review --plain --type <all|committed|uncommitted> [--base main]
-# Use --agent instead of --plain if you want structured findings for programmatic parsing.
-# Timeout at 35 minutes; capture both stdout and stderr.
-timeout 2100 coderabbit review --plain --type "$REVIEW_TYPE" --base main 2>&1
+# Correct invocation for CLI v0.7.x (verified on 0.7.6):
+#   coderabbit review [--committed|--uncommitted] [--base main]
+# Add --agent for structured findings you want to parse programmatically.
+# If unsure of the flags on the installed version, check `coderabbit review --help` first.
+SCOPE_FLAG="--$REVIEW_TYPE"   # --committed or --uncommitted
+timeout 2100 coderabbit review $SCOPE_FLAG --base main 2>&1
 CODERABBIT_EXIT=$?
 ```
 
 For long runs, prefer launching in the background and monitoring rather than blocking:
 ```bash
 LOG="$SCRATCH/coderabbit.log"   # use the session scratchpad dir
-nohup coderabbit review --plain --type "$REVIEW_TYPE" --base main > "$LOG" 2>&1 &
+nohup coderabbit review $SCOPE_FLAG --base main > "$LOG" 2>&1 &
 CR_PID=$!
 # Monitor with: while kill -0 $CR_PID 2>/dev/null; do sleep 10; done; cat "$LOG"
 ```
+
+The plain output streams progress lines ("Writing review comments… still working") before the findings; skip to the text after the last progress line when parsing. An `error: unknown option` in the output means the flags changed again — run `coderabbit review --help` and adapt rather than falling back.
 
 Inspect the exit code and output:
 
@@ -150,7 +158,7 @@ If issues remain after 3 cycles, note them but don't chase perfection.
 
 Run one more quick check with whichever reviewer is currently healthy:
 
-- CodeRabbit: `timeout 2100 coderabbit review --plain --type "$REVIEW_TYPE" --base main 2>&1 | head -50`
+- CodeRabbit: `timeout 2100 coderabbit review --$REVIEW_TYPE --base main 2>&1 | tail -60`
 - Superpowers: re-invoke `superpowers:requesting-code-review` asking only for remaining high-confidence issues.
 
 Report final status.
@@ -182,8 +190,8 @@ Report final status.
 ## Tips
 
 - Run this BEFORE creating a PR, not after.
-- Correct CLI invocation is `coderabbit review --plain --type <type>` — the old `--prompt-only` flag no longer exists.
-- Use `--agent` instead of `--plain` when you want structured findings to parse programmatically.
+- Correct CLI invocation (v0.7.x) is `coderabbit review --committed|--uncommitted [--base main]` — `--plain`, `--type` and `--prompt-only` no longer exist; plain text is the default.
+- Use `--agent` when you want structured findings to parse programmatically.
 - CodeRabbit runs can take 30+ min — run in the background and monitor rather than blocking.
 - Don't chase perfection — 2-3 cycles max. Focus on real issues, skip pure style nitpicks.
 - Pass `superpowers` as an argument to skip CodeRabbit entirely (faster, no external dependency).
