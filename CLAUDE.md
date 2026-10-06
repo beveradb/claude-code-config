@@ -89,6 +89,11 @@ that contain project-specific (Aquarius) markers; bypass only with `--no-verify`
   PDF version of a Markdown doc. Writes `<input>.pdf` beside the source unless an output path is
   given. Theme lives at `~/Projects/md2pdf/style.css` (edit to restyle); override per-run with
   `md2pdf --css other.css in.md` or `MD2PDF_CSS=...`.
+- **`dbx-materialize <path>...`** (alias `materialize`) — force Dropbox **online-only** files to
+  download locally (0-byte stubs with a `com.dropbox.placeholder` xattr; `cat`/`cp` do NOT fetch
+  them). Files or dirs, any cwd; `-s` = status only, `-j N` parallel, `-f GB` free-disk floor.
+  Use before reading anything under `~/AB Dropbox/`. No programmatic "make online-only" — Andrew
+  frees space via Finder → Dropbox → Make Online-Only. Docs: `~/Projects/beveradb/dropbox-materialize/`.
 
 ## Quick Reference
 
