@@ -9,7 +9,9 @@ Write a thorough, self-contained record of everything done and learned in this
 session, so a future Claude session (or Andrew) can pick up with full context —
 then leave the working tree clean by committing and pushing the loose changes
 (the session record and other safe edits) so the local clone and `main` are up
-to date. Works in ANY folder — git or not, code or not.
+to date — and finally remove any worktrees this session created whose work has
+shipped (the `/cleanup` step), so you never need to type `/wrap and /cleanup`.
+Works in ANY folder — git or not, code or not.
 
 ## Core principle: activities are not always code
 
@@ -46,6 +48,12 @@ Find the project root (the dir the session started from; its git root if any):
 ```bash
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ```
+**Worktree caveat:** if `ROOT` is a linked worktree that step 5 will remove
+(its PR is merged), a record written there would be deleted with it. Write the
+record in that repo's worktree that has the default branch checked out (find it
+in `git worktree list`), so step 4 commits it to `main`. If none is on the
+default branch, keep the record where it is, skip that worktree's removal, and
+say so in the report.
 Choose the sessions dir, in preference order: use existing `docs/sessions/`; else
 if `docs/` exists create `docs/sessions/`; else create `docs/sessions/` at the
 root anyway (fine for non-code folders). Compute the quarter and make the folder:
@@ -142,14 +150,55 @@ Only do this in a git repo. If not a repo, skip to Report.
 6. **Confirm clean:** run `git status` again and verify the tree is clean and the
    branch is not ahead of its upstream. Report the final state.
 
-### 5. Report
+### 5. Clean up this session's worktrees (`/cleanup`)
+
+Remove the worktrees **this session** created or worked in, once their work has
+shipped. Skip this step if the session touched no worktrees.
+
+1. **Identify them from the conversation** — worktrees created via `/start` (or a
+   project's equivalent), `git worktree add`, `EnterWorktree`, or `cd`'d into and
+   committed from. They may be in other repos than `ROOT` (e.g. a multi-repo
+   workspace). **Never** touch worktrees from other sessions, even if they look
+   stale — that's `/tidy-all-worktrees`, which is interactive.
+2. **Check each one is safe to remove** — all of these must hold:
+   ```bash
+   cd "<worktree>"
+   BRANCH=$(git branch --show-current)
+   gh pr list --head "$BRANCH" --state merged --json number,title,mergedAt,headRefOid
+   git rev-parse HEAD        # must EQUAL that merged PR's headRefOid
+   git status --porcelain    # must be clean
+   git status --porcelain --ignored | grep '^!!'   # ignored files die with the dir too
+   ```
+   Requiring `HEAD == headRefOid` proves the exact tip shipped: it catches
+   commits made (pushed or not) after the merge, and an older merged PR that
+   happens to share the branch name. If no PR matches, or the check errors,
+   treat it as unsafe.
+   If `git status` shows only generated junk (`__pycache__/`, build output,
+   logs), delete those inspected paths so the tree is clean (plain
+   `git worktree remove` refuses a dirty tree); anything else → unsafe.
+   Ignored files that are disposable (dependency dirs, caches, a `.env` copied
+   from the main clone) are fine; anything unique (local DBs, data, notes)
+   → unsafe.
+3. **Remove the safe ones** — follow `/cleanup` Steps 4–6 for each: `cd` out to
+   the repo's main worktree first (never remove the dir you're standing in),
+   `git pull --ff-only`, `git worktree remove "<path>"`, `git worktree prune`,
+   delete the remote branch if it still exists, and delete the local branch
+   (`git branch -D` is fine here — the merged PR was just confirmed, and
+   squash-merges make `-d` refuse).
+4. **Leave the rest in place and say why** — PR still open, no PR, uncommitted
+   changes, or commits beyond the merged PR head. Don't ask, force, or discard; just list them in
+   the report so Andrew can `/shipit` or `/cleanup` them deliberately.
+
+### 6. Report
 
 Print the path written, the commit(s) pushed (or why nothing was committed), the
-final `git status` state, and a one-line summary. Do NOT modify
+final `git status` state, the worktrees removed and any left in place (with the
+reason), and a one-line summary. Do NOT modify
 README/ARCHITECTURE/etc. — that is `/docs-review`'s job.
 
 ## Guidelines
-- Lightweight and universal: write the session record, then tidy the git tree.
+- Lightweight and universal: write the session record, tidy the git tree, then
+  remove this session's shipped worktrees.
 - Concise and factual; write for a future session with zero context.
 - The record is auto-loaded by the SessionStart hook next time — front-load
   what matters most.
@@ -159,3 +208,5 @@ README/ARCHITECTURE/etc. — that is `/docs-review`'s job.
 |---------|---------|
 | `/docs-review` | Full structured-doc review (serious workflow) |
 | `/docs-maintain` | Reorganize & enforce the docs layout |
+| `/cleanup` | Remove the current worktree after its PR merged (step 5 runs this for every session worktree) |
+| `/tidy-all-worktrees` | Interactive review of ALL worktrees, including other sessions' |
