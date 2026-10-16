@@ -162,13 +162,17 @@ shipped. Skip this step if the session touched no worktrees.
    ```bash
    cd "<worktree>"
    BRANCH=$(git branch --show-current)
-   gh pr list --head "$BRANCH" --state merged --json number,title,mergedAt   # PR merged
-   git status --porcelain                                                     # clean tree
-   git fetch -q origin && git log --oneline "origin/$BRANCH..HEAD" 2>/dev/null  # nothing unpushed
+   gh pr list --head "$BRANCH" --state merged --json number,title,mergedAt,headRefOid
+   git rev-parse HEAD        # must EQUAL that merged PR's headRefOid
+   git status --porcelain    # must be clean
    ```
-   (Unpushed commits after a merged PR mean work landed after the merge — not safe.)
-   If the tree has only generated junk (`__pycache__/`, `node_modules/`, build
-   output, logs), that's fine to discard; anything else is not.
+   Requiring `HEAD == headRefOid` proves the exact tip shipped: it catches
+   commits made (pushed or not) after the merge, and an older merged PR that
+   happens to share the branch name. If no PR matches, or the check errors,
+   treat it as unsafe.
+   If `git status` shows only generated junk (`__pycache__/`, build output,
+   logs), delete those inspected paths so the tree is clean (plain
+   `git worktree remove` refuses a dirty tree); anything else → unsafe.
 3. **Remove the safe ones** — follow `/cleanup` Steps 4–6 for each: `cd` out to
    the repo's main worktree first (never remove the dir you're standing in),
    `git pull --ff-only`, `git worktree remove "<path>"`, `git worktree prune`,
@@ -176,7 +180,7 @@ shipped. Skip this step if the session touched no worktrees.
    (`git branch -D` is fine here — the merged PR was just confirmed, and
    squash-merges make `-d` refuse).
 4. **Leave the rest in place and say why** — PR still open, no PR, uncommitted
-   changes, or unpushed commits. Don't ask, force, or discard; just list them in
+   changes, or commits beyond the merged PR head. Don't ask, force, or discard; just list them in
    the report so Andrew can `/shipit` or `/cleanup` them deliberately.
 
 ### 6. Report
