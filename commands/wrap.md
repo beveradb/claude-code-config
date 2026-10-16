@@ -50,8 +50,10 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ```
 **Worktree caveat:** if `ROOT` is a linked worktree that step 5 will remove
 (its PR is merged), a record written there would be deleted with it. Write the
-record in that repo's main worktree instead (`git worktree list | head -1`), so
-step 4 commits it to `main`.
+record in that repo's worktree that has the default branch checked out (find it
+in `git worktree list`), so step 4 commits it to `main`. If none is on the
+default branch, keep the record where it is, skip that worktree's removal, and
+say so in the report.
 Choose the sessions dir, in preference order: use existing `docs/sessions/`; else
 if `docs/` exists create `docs/sessions/`; else create `docs/sessions/` at the
 root anyway (fine for non-code folders). Compute the quarter and make the folder:
@@ -165,6 +167,7 @@ shipped. Skip this step if the session touched no worktrees.
    gh pr list --head "$BRANCH" --state merged --json number,title,mergedAt,headRefOid
    git rev-parse HEAD        # must EQUAL that merged PR's headRefOid
    git status --porcelain    # must be clean
+   git status --porcelain --ignored | grep '^!!'   # ignored files die with the dir too
    ```
    Requiring `HEAD == headRefOid` proves the exact tip shipped: it catches
    commits made (pushed or not) after the merge, and an older merged PR that
@@ -173,6 +176,9 @@ shipped. Skip this step if the session touched no worktrees.
    If `git status` shows only generated junk (`__pycache__/`, build output,
    logs), delete those inspected paths so the tree is clean (plain
    `git worktree remove` refuses a dirty tree); anything else → unsafe.
+   Ignored files that are disposable (dependency dirs, caches, a `.env` copied
+   from the main clone) are fine; anything unique (local DBs, data, notes)
+   → unsafe.
 3. **Remove the safe ones** — follow `/cleanup` Steps 4–6 for each: `cd` out to
    the repo's main worktree first (never remove the dir you're standing in),
    `git pull --ff-only`, `git worktree remove "<path>"`, `git worktree prune`,
