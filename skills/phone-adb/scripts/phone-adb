@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# phone-adb — connect adb to Andrew's phone over Wi-Fi (wireless debugging).
+#
+#   phone-adb                  connect (or confirm already connected); prints the serial
+#   phone-adb pair IP:PORT CODE  one-time pairing from the phone's "Pair with pairing code" dialog
+#   phone-adb status           show adb devices + mDNS-advertised services
+#   phone-adb disconnect       drop all wireless adb connections
+#
+# Order: an existing connection; the fixed legacy port :5555 on the last-known IP
+# (phone-adb switches the phone to it after every successful connect, and it lasts
+# until the phone reboots); adb's mDNS (_adb-tls-connect._tcp); the last address.
+# mDNS sometimes stops advertising the random debugging port (e.g. right after pairing);
+# then ask for the IP:port under "Device addresses & Port" and `adb connect` it once.
+# (A port scan doesn't work: the phone drops, not refuses, closed ports.)
+set -uo pipefail
+
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/phone-adb/last"
+FIXED_PORT="${PHONE_ADB_FIXED_PORT:-5555}"
+WAIT_SECS="${PHONE_ADB_WAIT:-8}"
+
+die() { echo "phone-adb: $*" >&2; exit 1; }
+command -v adb >/dev/null || die "adb not found (brew install --cask android-platform-tools)"
+
+# Serials of devices in state "device" that are reached over the network (IP:port or mDNS name).
+wireless_devices() {
+  adb devices | awk 'NR>1 && $2=="device" && ($1 ~ /:[0-9]+$/ || $1 ~ /_adb-tls-connect/) {print $1}'
+}
+
+mdns_connect_targets() {
+  adb mdns services 2>/dev/null | awk '$2 ~ /_adb-tls-connect/ {print $3}'
+}
+
+last_host() { [[ -f "$CACHE" ]] && cut -d: -f1 "$CACHE"; }
+
+# try_connect HOST:PORT [quiet] — on success: cache it, pin the phone to the fixed port, report.
+try_connect() {
+  local t="$1" out
+  out=$(adb connect "$t" 2>&1)
+  if [[ "$out" == *"connected to"* ]]; then
+    sleep 1
+    if adb -s "$t" get-state >/dev/null 2>&1; then
+      mkdir -p "$(dirname "$CACHE")" && echo "$t" > "$CACHE"
+      pin_fixed_port "$t"
+      return 0
+    fi
+  fi
+  adb disconnect "$t" >/dev/null 2>&1
+  [[ "${2:-}" == quiet ]] || echo "tried $t: $out" >&2
+  return 1
+}
+
+# Switch the phone to also listen on FIXED_PORT (adb tcpip), so the next reconnect needs no
+# discovery at all. Lasts until the phone reboots or wireless debugging is turned off.
+pin_fixed_port() {
+  local t="$1" host="${1%%:*}" fixed
+  fixed="$host:$FIXED_PORT"
+  if [[ "$t" != "$fixed" ]]; then
+    adb -s "$t" tcpip "$FIXED_PORT" >/dev/null 2>&1 && sleep 3
+    if adb connect "$fixed" 2>&1 | grep -q "connected to" && adb -s "$fixed" get-state >/dev/null 2>&1; then
+      adb disconnect "$t" >/dev/null 2>&1
+      echo "$fixed" > "$CACHE"; t="$fixed"
+    fi
+  fi
+  report "$t"
+}
+
+report() {
+  local serial="$1"
+  local model
+  model=$(adb -s "$serial" shell getprop ro.product.model 2>/dev/null | tr -d '\r')
+  echo "CONNECTED serial=$serial model=${model:-unknown}"
+  echo "Use: adb -s $serial <cmd>   (or export ANDROID_SERIAL=$serial)"
+}
+
+connect() {
+  adb start-server >/dev/null 2>&1
+
+  local existing
+  existing=$(wireless_devices | head -1)
+  if [[ -n "$existing" ]]; then report "$existing"; return 0; fi
+
+  # Fastest: the fixed port from an earlier session (survives adb server restarts, not phone reboots).
+  local host
+  host=$(last_host)
+  [[ -n "$host" ]] && try_connect "$host:$FIXED_PORT" quiet && return 0
+
+  local targets="" i
+  for ((i = 0; i < WAIT_SECS; i++)); do
+    targets=$(mdns_connect_targets)
+    [[ -n "$targets" ]] && break
+    sleep 1
+  done
+  [[ -f "$CACHE" ]] && targets=$(printf '%s\n%s\n' "$targets" "$(cat "$CACHE")" | awk 'NF && !seen[$0]++')
+
+  local t
+  for t in $targets; do try_connect "$t" && return 0; done
+
+
+  cat >&2 <<'MSG'
+NOT CONNECTED. Phone not found on the network. Ask Andrew to:
+  1. Unlock the phone, Settings > System > Developer options > Wireless debugging: ON
+     (it switches itself off on some networks / after reboot).
+  2. Make sure the phone and this Mac are on the same Wi-Fi (no VPN on either).
+  3. If this Mac isn't under "Paired devices" there: tap "Pair device with pairing code"
+     and give you the IP:port and 6-digit code (each code works ONCE), then run:
+       phone-adb pair IP:PORT CODE
+  4. If it still won't connect: send the IP:port shown under "Device addresses & Port"
+     and run:  adb connect IP:PORT   (phone-adb then pins the phone to :5555)
+Then re-run: phone-adb
+MSG
+  return 1
+}
+
+case "${1:-connect}" in
+  connect) connect ;;
+  pair)
+    [[ $# -eq 3 ]] || die "usage: phone-adb pair IP:PORT CODE"
+    # A pairing code works ONCE: never retry pair with the same code.
+    out=$(adb pair "$2" "$3" 2>&1); echo "$out"
+    mkdir -p "$(dirname "$CACHE")"; [[ -f "$CACHE" ]] || echo "${2%%:*}:0" > "$CACHE"
+    sleep 3
+    # "protocol fault" is common when this Mac is already paired; connecting still works.
+    connect ;;
+  status) adb devices -l; echo; adb mdns services ;;
+  disconnect) adb disconnect ;;
+  -h|--help|help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command '$1' (try: phone-adb help)" ;;
+esac
