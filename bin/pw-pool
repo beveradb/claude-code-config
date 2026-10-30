@@ -310,7 +310,7 @@ class Slot:
             self.seq += 1
             rid = f"pw-pool:{self.seq}"
             ev = threading.Event()
-            self.pending[rid] = [ev, None]
+            self.pending[rid] = [ev, None, child]
         self.write_child(child, {"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
         if not ev.wait(timeout):
             self.pending.pop(rid, None)
@@ -347,7 +347,11 @@ class Slot:
                     threading.Thread(target=self.stop_child, daemon=True).start()
                 continue
             self.send(msg)  # notifications and server->client requests (e.g. roots/list)
-        # child exited
+        # child exited: wake its handshake waiters now rather than letting them hit the timeout
+        for entry in list(self.pending.values()):
+            if entry[2] is child and entry[1] is None:
+                entry[1] = {"error": {"message": "playwright-mcp exited"}}
+                entry[0].set()
         with self.state_lock:
             if self.child is child:
                 self.log("playwright-mcp exited")

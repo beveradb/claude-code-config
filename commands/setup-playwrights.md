@@ -14,7 +14,7 @@ Profiles" for how it works.
 ## Step 0: Detect current state (run in parallel)
 
 ```bash
-ls ~/.claude/bin/pw-pool && ls -la ~/.local/bin/pw-pool 2>&1
+ls ~/.claude/bin/pw-pool 2>&1; ls -la ~/.local/bin/pw-pool 2>&1
 cat ~/.playwright-profiles/pools.json 2>&1
 ls -la ~/.playwright-profiles/
 ls -d ~/.claude ~/.claude-* 2>/dev/null
@@ -68,7 +68,7 @@ Legacy profiles are top-level dirs such as `~/.playwright-profiles/chrome-1`.
 ## Step 3: Register slots per config dir
 
 ```bash
-ln -sf ~/.claude/bin/pw-pool ~/.local/bin/pw-pool   # CLI on PATH
+mkdir -p ~/.local/bin && ln -sf ~/.claude/bin/pw-pool ~/.local/bin/pw-pool   # CLI on PATH
 pw-pool install --config-dir <dir> --pool <pool> --exe ~/.claude/bin/pw-pool --dry-run
 ```
 

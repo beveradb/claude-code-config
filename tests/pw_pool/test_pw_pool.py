@@ -152,6 +152,18 @@ class PwPoolTest(unittest.TestCase):
         self.assertTrue(b.call("browser_navigate")["isError"])  # 'other' has only one chrome
         self.assertEqual(self.status()["chrome-1"]["state"], "free")
 
+    def test_child_that_dies_during_startup_fails_fast(self):
+        cfg = json.loads((self.root / "pools.json").read_text())
+        cfg["mcp_command"] = [sys.executable, "-c", "import sys; sys.exit(1)"]
+        (self.root / "pools.json").write_text(json.dumps(cfg))
+        t = time.time()
+        c = self.slot()  # initialize: tool-list fetch fails, falls back to own tools
+        r = c.call("browser_navigate")
+        self.assertTrue(r["isError"])
+        self.assertIn("Could not start Playwright", text(r))
+        self.assertLess(time.time() - t, 10)
+        self.assertEqual(self.status()["chrome-1"]["state"], "free")
+
     def test_firefox_slot_uses_firefox_profiles(self):
         f = self.slot(browser="firefox", name="playwright-firefox-1")
         self.assertIn("/testpool/firefox-1", text(f.call("browser_navigate")))
@@ -186,9 +198,10 @@ class PwPoolTest(unittest.TestCase):
         self.assertIn("chrome-1: held by playwright-chrome-1", text(c.call("browser_pool_status")))
 
     def test_inflight_call_is_not_idled_out(self):
-        self.env["PW_POOL_IDLE_MINUTES"] = "0"  # disabled
+        self.env["PW_POOL_IDLE_MINUTES"] = str(1 / 60)  # one second, shorter than the call
         c = self.slot()
-        self.assertIn("ok", text(c.call("browser_wait", {"s": 0.5})))
+        self.assertIn("ok", text(c.call("browser_wait", {"s": 2.5})))
+        self.assertEqual(self.status()["chrome-1"]["state"], "held")
 
     def test_use_profile_switches_and_validates(self):
         c = self.slot()
