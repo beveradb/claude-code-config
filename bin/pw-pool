@@ -1,0 +1,838 @@
+#!/usr/bin/env python3
+"""pw-pool — pools of persistent Playwright browser profiles shared across Claude sessions.
+
+Layout (root: $PW_POOL_ROOT, default ~/.playwright-profiles):
+
+    pools.json                     pool names, signed-in account labels, profile counts
+    <pool>/chrome-1 .. chrome-N    persistent Chrome profiles (--user-data-dir)
+    <pool>/firefox-1 .. firefox-N  persistent Firefox profiles
+    .locks/<pool>.<profile>.lock   flock held by the slot using the profile (+ JSON metadata)
+    .cache/tools.json              cached Playwright MCP initialize/tools response
+
+Each Claude config dir registers a few "slot" MCP servers (e.g. playwright-chrome-1,
+playwright-chrome-2, playwright-firefox-1), all bound to that config dir's pool:
+
+    pw-pool slot --pool personal --browser chrome --name playwright-chrome-1
+
+A slot is a thin stdio proxy. It answers initialize/tools/list from cache, and only on the
+first browser tool call does it claim a free profile from its pool (flock, released
+automatically if the process dies) and start the real `@playwright/mcp` server on it. The
+claim is dropped on browser_close, after `idle_minutes` without tool calls, or on exit.
+
+Other commands:
+    pw-pool status [--pool P | --all] [--json]   who holds which profile
+    pw-pool release POOL/PROFILE [--force]       close a stale (or, with --force, live) holder
+    pw-pool clone POOL/SRC (--unused | --to a,b) seed profiles from a signed-in one
+    pw-pool install --config-dir DIR --pool P    register slot servers + permissions
+"""
+
+import argparse
+import fcntl
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+ROOT = Path(os.environ.get("PW_POOL_ROOT", Path.home() / ".playwright-profiles")).expanduser()
+LOCKS = ROOT / ".locks"
+CACHE = ROOT / ".cache" / "tools.json"
+BROWSERS = ("chrome", "firefox")
+DEFAULTS = {
+    "chrome": 5,
+    "firefox": 2,
+    "idle_minutes": 30,
+    "mcp_command": ["npx", "@playwright/mcp@latest"],
+    "mcp_args": ["--caps", "vision,pdf,devtools"],
+    "pools": {},
+}
+DEFAULT_SLOTS = ["chrome", "chrome", "firefox"]
+# Files that must not be copied between profiles (locks, caches, crash state).
+CLONE_IGNORE = shutil.ignore_patterns(
+    "Singleton*", "lock", ".parentlock", "parent.lock", "Cache", "Code Cache", "GPUCache",
+    "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "GrShaderCache", "ShaderCache",
+    "CacheStorage", "ScriptCache", "cache2", "startupCache", "Crashpad", "crashes",
+    "BrowserMetrics*", "minidumps", "sessionstore-backups",
+)
+
+
+# ---------------------------------------------------------------- config & processes
+
+def load_config():
+    cfg = json.loads(json.dumps(DEFAULTS))
+    try:
+        cfg.update(json.loads((ROOT / "pools.json").read_text()))
+    except FileNotFoundError:
+        pass
+    return cfg
+
+
+def pool_profiles(cfg, pool, browser=None):
+    pc = cfg["pools"].get(pool, {})
+    out = []
+    for b in BROWSERS:
+        if browser and b != browser:
+            continue
+        out += [f"{b}-{i}" for i in range(1, int(pc.get(b, cfg[b])) + 1)]
+    return out
+
+
+def ps_table():
+    """{pid: (ppid, command)} for every process."""
+    res = subprocess.run(["ps", "-axww", "-o", "pid=,ppid=,command="],
+                         capture_output=True, text=True)
+    table = {}
+    for line in res.stdout.splitlines():
+        parts = line.strip().split(None, 2)
+        if len(parts) == 3:
+            table[int(parts[0])] = (int(parts[1]), parts[2])
+    return table
+
+
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def profile_aliases():
+    """{real profile path: [alias paths]} for legacy top-level symlinks (e.g. chrome-3 -> personal/chrome-1)."""
+    aliases = {}
+    if ROOT.is_dir():
+        for p in ROOT.iterdir():
+            if p.is_symlink():
+                aliases.setdefault(str(p.resolve()), []).append(str(p))
+    return aliases
+
+
+def browser_pids(profile_dir, table, aliases):
+    """PIDs of browser processes (not MCP servers) that have this profile dir open."""
+    real = str(Path(profile_dir).resolve())
+    paths = {real, str(profile_dir), *aliases.get(real, [])}
+    hits = []
+    for pid, (_, cmd) in table.items():
+        if "playwright-mcp" in cmd or "npm exec" in cmd or "pw-pool" in cmd:
+            continue
+        for p in paths:
+            if re.search(rf"(?:--user-data-dir=|-profile ){re.escape(p)}(?=\s|$)", cmd):
+                hits.append(pid)
+                break
+    return hits
+
+
+def find_claude(table, start_pid):
+    """Walk up from start_pid to the owning Claude Code process; return (pid, session dict)."""
+    pid, seen = start_pid, set()
+    while pid and pid not in seen and pid in table:
+        seen.add(pid)
+        ppid, cmd = table[pid]
+        if cmd and os.path.basename(cmd.split()[0]) == "claude":
+            return pid, read_session(pid)
+        pid = ppid
+    return None, {}
+
+
+def config_dir():
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser()
+
+
+def read_session(claude_pid):
+    try:
+        return json.loads((config_dir() / "sessions" / f"{claude_pid}.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def lock_path(pool, profile):
+    return LOCKS / f"{pool}.{profile}.lock"
+
+
+def lock_state(pool, profile):
+    """(held: bool, metadata dict). Held means a live process has the flock."""
+    path = lock_path(pool, profile)
+    if not path.exists():
+        return False, {}
+    try:
+        meta = json.loads(path.read_text() or "{}")
+    except ValueError:
+        meta = {}
+    fd = os.open(path, os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False, meta
+    except BlockingIOError:
+        return True, meta
+    finally:
+        os.close(fd)
+
+
+def profile_state(cfg, pool, profile, table=None, aliases=None):
+    table = table if table is not None else ps_table()
+    aliases = aliases if aliases is not None else profile_aliases()
+    d = ROOT / pool / profile
+    held, meta = lock_state(pool, profile)
+    st = {"pool": pool, "profile": profile, "dir": str(d), "exists": d.exists(),
+          "state": "free", "meta": meta}
+    if held:
+        st["state"] = "held"
+    else:
+        pids = browser_pids(d, table, aliases) if d.exists() else []
+        if pids:
+            st["state"] = "open-unmanaged"  # browser from a legacy/non-pool server
+            st["pids"] = pids
+    return st
+
+
+def fmt_idle(meta):
+    last = meta.get("last_used_at") or meta.get("acquired_at")
+    if not last:
+        return ""
+    mins = int((time.time() - last) / 60)
+    return f"idle {mins}m" if mins < 120 else f"idle {mins // 60}h"
+
+
+def describe(st):
+    m = st["meta"]
+    if st["state"] == "held":
+        who = m.get("session_name") or (m.get("session_id") or "?")[:8]
+        cwd = (m.get("cwd") or "").replace(str(Path.home()), "~")
+        return f"held by {m.get('slot', '?')} in session '{who}' ({cwd}), {fmt_idle(m)}"
+    if st["state"] == "open-unmanaged":
+        return f"open by a browser outside the pool (pid {', '.join(map(str, st['pids']))})"
+    return "free" if st["exists"] else "free (new, not signed in yet)"
+
+
+def current_pool():
+    """Pool used by this config dir's slot servers, read from its MCP registration."""
+    cd = config_dir()
+    cj = Path.home() / ".claude.json" if cd == Path.home() / ".claude" else cd / ".claude.json"
+    try:
+        servers = json.loads(cj.read_text()).get("mcpServers", {})
+    except (OSError, ValueError):
+        return None
+    for s in servers.values():
+        args = s.get("args", [])
+        if "slot" in args and "--pool" in args:
+            return args[args.index("--pool") + 1]
+    return None
+
+
+# ---------------------------------------------------------------- slot (MCP proxy)
+
+class Slot:
+    OWN_TOOLS = [
+        {
+            "name": "browser_pool_status",
+            "description": (
+                "Show which pooled browser profile this Playwright server is using, the account the "
+                "pool is meant to be signed in to, and which profiles in the pool are free or held "
+                "by other Claude sessions. Call this before blaming a lock or picking another server."),
+            "inputSchema": {"type": "object", "properties": {}},
+            "annotations": {"readOnlyHint": True},
+        },
+        {
+            "name": "browser_use_profile",
+            "description": (
+                "Switch this Playwright server to a specific profile in its pool, e.g. 'chrome-3' "
+                "(see browser_pool_status). Closes this server's current browser first. Only needed "
+                "when a particular profile matters, e.g. the one the user just signed in to; "
+                "otherwise the first browser tool call picks a free profile automatically."),
+            "inputSchema": {"type": "object", "properties": {
+                "profile": {"type": "string", "description": "Profile name such as chrome-2 or firefox-1"}},
+                "required": ["profile"]},
+        },
+    ]
+
+    def __init__(self, pool, browser, name):
+        self.cfg = load_config()
+        self.pool, self.browser, self.name = pool, browser, name
+        self.account = self.cfg["pools"].get(pool, {}).get("account", "")
+        self.idle = float(os.environ.get("PW_POOL_IDLE_MINUTES", self.cfg["idle_minutes"])) * 60
+        self.out_lock = threading.Lock()
+        self.state_lock = threading.RLock()
+        self.child = None
+        self.profile = None
+        self.lock_fd = None
+        self.meta = {}
+        self.client_init = None
+        self.served_tools = None
+        self.pending = {}         # internal request id -> [Event, response]
+        self.inflight = {}        # client request id -> tool name
+        self.last_activity = time.time()
+        self.seq = 0
+        self.release_requested = threading.Event()
+        signal.signal(signal.SIGUSR1, lambda *_: self.release_requested.set())
+        signal.signal(signal.SIGTERM, lambda *_: (self.stop_child(), os._exit(0)))
+
+    # -- io helpers
+    def send(self, msg):
+        data = json.dumps(msg, separators=(",", ":")) + "\n"
+        with self.out_lock:
+            sys.stdout.write(data)
+            sys.stdout.flush()
+
+    def reply(self, mid, result=None, error=None):
+        msg = {"jsonrpc": "2.0", "id": mid}
+        if error:
+            msg["error"] = error
+        else:
+            msg["result"] = result
+        self.send(msg)
+
+    def text_result(self, mid, text, is_error=False):
+        self.reply(mid, {"content": [{"type": "text", "text": text}], "isError": is_error})
+
+    def log(self, *a):
+        print(f"[pw-pool {self.name}]", *a, file=sys.stderr, flush=True)
+
+    # -- child management
+    def child_cmd(self, profile_dir=None):
+        cmd = list(self.cfg["mcp_command"]) + list(self.cfg["mcp_args"]) + ["--browser", self.browser]
+        return cmd + (["--user-data-dir", str(profile_dir)] if profile_dir else ["--isolated"])
+
+    def spawn(self, profile_dir=None):
+        child = subprocess.Popen(self.child_cmd(profile_dir), stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, start_new_session=True)
+        threading.Thread(target=self.child_reader, args=(child,), daemon=True).start()
+        return child
+
+    def child_request(self, child, method, params, timeout=120):
+        with self.state_lock:
+            self.seq += 1
+            rid = f"pw-pool:{self.seq}"
+            ev = threading.Event()
+            self.pending[rid] = [ev, None, child]
+        self.write_child(child, {"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
+        if not ev.wait(timeout):
+            self.pending.pop(rid, None)
+            raise TimeoutError(f"{method} timed out")
+        resp = self.pending.pop(rid)[1]
+        if "error" in resp:
+            raise RuntimeError(resp["error"].get("message", str(resp["error"])))
+        return resp["result"]
+
+    def write_child(self, child, msg):
+        try:
+            child.stdin.write((json.dumps(msg, separators=(",", ":")) + "\n").encode())
+            child.stdin.flush()
+        except (BrokenPipeError, ValueError, OSError):
+            pass
+
+    def child_reader(self, child):
+        for raw in child.stdout:
+            try:
+                msg = json.loads(raw)
+            except ValueError:
+                continue
+            mid = msg.get("id")
+            if "method" not in msg and isinstance(mid, str) and mid in self.pending:
+                self.pending[mid][1] = msg
+                self.pending[mid][0].set()
+                continue
+            if "method" not in msg and mid in self.inflight:
+                tool = self.inflight.pop(mid)
+                self.last_activity = time.time()
+                self.touch()
+                self.send(msg)
+                if tool == "browser_close":
+                    threading.Thread(target=self.stop_child, daemon=True).start()
+                continue
+            self.send(msg)  # notifications and server->client requests (e.g. roots/list)
+        # child exited: wake its handshake waiters now rather than letting them hit the timeout
+        for entry in list(self.pending.values()):
+            if entry[2] is child and entry[1] is None:
+                entry[1] = {"error": {"message": "playwright-mcp exited"}}
+                entry[0].set()
+        with self.state_lock:
+            if self.child is child:
+                self.log("playwright-mcp exited")
+                self.child = None
+                self.release_lock()
+            for mid in list(self.inflight):
+                self.inflight.pop(mid, None)
+                self.text_result(mid, "The Playwright browser process exited. Call the tool again to start a new one.", True)
+
+    def init_params(self):
+        return self.client_init or {"protocolVersion": "2025-06-18", "capabilities": {},
+                                    "clientInfo": {"name": "pw-pool", "version": "1"}}
+
+    def handshake(self, child):
+        init = self.child_request(child, "initialize", self.init_params(), timeout=180)
+        self.write_child(child, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+        tools = self.child_request(child, "tools/list", {}).get("tools", [])
+        return init, tools
+
+    def cache_key(self):
+        return " ".join(self.child_cmd()[:-1]) + " @" + self.init_params().get("protocolVersion", "")
+
+    def load_cache(self):
+        try:
+            return json.loads(CACHE.read_text()).get(self.cache_key())
+        except (OSError, ValueError):
+            return None
+
+    def save_cache(self, init, tools):
+        CACHE.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            data = json.loads(CACHE.read_text())
+        except (OSError, ValueError):
+            data = {}
+        data[self.cache_key()] = {"init": init, "tools": tools, "at": time.time()}
+        tmp = CACHE.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(data))
+        tmp.replace(CACHE)
+
+    def cached_or_fetch(self):
+        entry = self.load_cache()
+        if entry:
+            return entry
+        child = None
+        try:
+            child = self.spawn(None)
+            init, tools = self.handshake(child)
+            self.save_cache(init, tools)
+            return {"init": init, "tools": tools}
+        except Exception as e:  # serve our own tools; the real list arrives via list_changed
+            self.log("could not fetch Playwright tool list:", e)
+            return {"init": {"protocolVersion": self.init_params()["protocolVersion"],
+                             "serverInfo": {"name": "Playwright", "version": "?"}}, "tools": []}
+        finally:
+            if child:
+                self.kill(child)
+
+    # -- profile locking
+    def try_lock(self, profile, table, aliases):
+        d = ROOT / self.pool / profile
+        LOCKS.mkdir(parents=True, exist_ok=True)
+        fd = os.open(lock_path(self.pool, profile), os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            return False
+        if d.exists() and browser_pids(d, table, aliases):
+            os.close(fd)
+            return False
+        self.lock_fd, self.profile = fd, profile
+        claude_pid, sess = find_claude(table, os.getppid())
+        self.meta = {"pid": os.getpid(), "slot": self.name, "pool": self.pool, "profile": profile,
+                     "claude_pid": claude_pid, "session_id": sess.get("sessionId"),
+                     "session_name": sess.get("name"), "cwd": sess.get("cwd") or os.getcwd(),
+                     "config_dir": str(config_dir()), "acquired_at": time.time(),
+                     "last_used_at": time.time()}
+        self.touch()
+        return True
+
+    def touch(self):
+        if self.lock_fd is None:
+            return
+        self.meta["last_used_at"] = time.time()
+        data = json.dumps(self.meta).encode()
+        os.ftruncate(self.lock_fd, 0)
+        os.pwrite(self.lock_fd, data, 0)
+
+    def release_lock(self):
+        if self.lock_fd is not None:
+            os.close(self.lock_fd)  # closing drops the flock
+            self.lock_fd = None
+            self.log(f"released {self.pool}/{self.profile}")
+
+    def acquire(self, want=None):
+        """Lock a free profile. Prefer: requested > last used by this slot > signed-in > new."""
+        table, aliases = ps_table(), profile_aliases()
+        names = pool_profiles(self.cfg, self.pool, self.browser)
+        if want:
+            order = [want]
+        else:
+            existing = [p for p in names if (ROOT / self.pool / p).exists()]
+            order = existing + [p for p in names if p not in existing]
+            if self.profile in order:
+                order.remove(self.profile)
+                order.insert(0, self.profile)
+        for p in order:
+            if self.try_lock(p, table, aliases):
+                return p
+        return None
+
+    def ensure_child(self):
+        """Start Playwright on a free profile if not running. Returns error text or None."""
+        with self.state_lock:
+            if self.child and self.child.poll() is None:
+                return None
+            if self.lock_fd is None and not self.acquire():
+                return self.no_free_text()
+            d = ROOT / self.pool / self.profile
+            d.mkdir(parents=True, exist_ok=True)
+            child = None
+            try:
+                child = self.spawn(d)
+                init, tools = self.handshake(child)
+            except Exception as e:
+                if child:
+                    self.kill(child)
+                self.release_lock()
+                return f"Could not start Playwright on {self.pool}/{self.profile}: {e}"
+            self.child = child
+            self.log(f"using {self.pool}/{self.profile}")
+            self.save_cache(init, tools)
+            if self.served_tools is not None and [t["name"] for t in tools] != [t["name"] for t in self.served_tools]:
+                self.served_tools = tools
+                self.send({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
+            return None
+
+    def no_free_text(self):
+        table, aliases = ps_table(), profile_aliases()
+        lines = [f"No free {self.browser} profile in pool '{self.pool}':"]
+        for p in pool_profiles(self.cfg, self.pool, self.browser):
+            lines.append(f"  {p}: {describe(profile_state(self.cfg, self.pool, p, table, aliases))}")
+        other = "firefox" if self.browser == "chrome" else "chrome"
+        lines.append(f"Try a playwright-{other}-* server, or ask the user to finish/close a session "
+                     f"that holds one (`pw-pool status`). Don't kill other sessions' browsers yourself.")
+        return "\n".join(lines)
+
+    def kill(self, child):
+        try:
+            child.stdin.close()
+        except OSError:
+            pass
+        try:
+            child.wait(10)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        for sig, wait in ((signal.SIGTERM, 5), (signal.SIGKILL, 5)):
+            try:
+                os.killpg(child.pid, sig)
+                child.wait(wait)
+                return
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                continue
+
+    def stop_child(self):
+        # Held for the whole shutdown so a new tool call can't relaunch on a closing profile.
+        with self.state_lock:
+            child, self.child = self.child, None
+            if child:
+                self.kill(child)
+            self.release_lock()
+
+    def watchdog(self):
+        tick = min(30, max(0.2, self.idle / 2)) if self.idle > 0 else 30
+        while True:
+            if self.release_requested.wait(tick):
+                self.release_requested.clear()
+                self.log("release requested")
+                self.stop_child()
+            elif (self.lock_fd is not None and not self.inflight and self.idle > 0
+                  and time.time() - self.last_activity > self.idle):
+                self.log(f"idle for {self.idle / 60:.0f}m, closing browser")
+                self.stop_child()
+
+    # -- own tools
+    def status_text(self):
+        table, aliases = ps_table(), profile_aliases()
+        acct = f", meant to be signed in as {self.account}" if self.account else ""
+        head = (f"This server ({self.name}) is using {self.pool}/{self.profile}" if self.lock_fd is not None
+                else f"This server ({self.name}) has no profile yet; the next browser call picks one")
+        lines = [head + ".", f"Pool '{self.pool}'{acct}:"]
+        for p in pool_profiles(self.cfg, self.pool):
+            st = profile_state(self.cfg, self.pool, p, table, aliases)
+            mine = " (this server)" if st["meta"].get("pid") == os.getpid() and st["state"] == "held" else ""
+            lines.append(f"  {p}: {describe(st)}{mine}")
+        return "\n".join(lines)
+
+    def use_profile(self, want):
+        if want not in pool_profiles(self.cfg, self.pool, self.browser):
+            return f"'{want}' is not a {self.browser} profile in pool '{self.pool}'. {self.status_text()}", True
+        if self.profile == want and self.lock_fd is not None:
+            return f"Already using {self.pool}/{want}.", False
+        self.stop_child()
+        with self.state_lock:
+            if not self.acquire(want):
+                return f"{self.pool}/{want} is in use.\n{self.status_text()}", True
+        return f"Switched to {self.pool}/{want}; the next browser call opens it.", False
+
+    # -- main loop
+    def handle(self, msg):
+        method, mid = msg.get("method"), msg.get("id")
+        if method is None:  # response to a child->client request
+            if self.child:
+                self.write_child(self.child, msg)
+            return
+        if method == "initialize":
+            self.client_init = msg.get("params") or {}
+            entry = self.cached_or_fetch()
+            self.served_tools = entry["tools"]
+            init = dict(entry["init"])
+            init["protocolVersion"] = self.client_init.get("protocolVersion", init.get("protocolVersion"))
+            init["capabilities"] = {"tools": {"listChanged": True}}
+            si = dict(init.get("serverInfo") or {})
+            si["name"] = f"{si.get('name', 'Playwright')} (pw-pool {self.pool}/{self.browser})"
+            init["serverInfo"] = si
+            acct = f" signed in as {self.account}" if self.account else ""
+            init["instructions"] = (
+                f"{self.name}: a {self.browser} browser from the '{self.pool}' profile pool{acct}. "
+                "A free profile is claimed on the first browser call and released on browser_close "
+                "(call it when the browser task is done) or after idle. browser_pool_status shows who holds what.")
+            self.reply(mid, init)
+        elif method == "notifications/initialized":
+            pass
+        elif method == "ping":
+            self.reply(mid, {})
+        elif method == "tools/list":
+            self.reply(mid, {"tools": (self.served_tools or []) + self.OWN_TOOLS})
+        elif method == "tools/call":
+            name = (msg.get("params") or {}).get("name")
+            self.last_activity = time.time()
+            if name == "browser_pool_status":
+                self.text_result(mid, self.status_text())
+            elif name == "browser_use_profile":
+                text, err = self.use_profile(((msg.get("params") or {}).get("arguments") or {}).get("profile", ""))
+                self.text_result(mid, text, err)
+            elif name == "browser_close" and not self.child:
+                self.release_lock()
+                self.text_result(mid, "No browser was open.")
+            else:
+                err = self.ensure_child()
+                if err:
+                    self.text_result(mid, err, True)
+                    return
+                self.inflight[mid] = name
+                self.touch()
+                self.write_child(self.child, msg)
+        elif self.child:
+            if mid is not None and method not in ("notifications/cancelled",):
+                self.inflight[mid] = method
+            self.write_child(self.child, msg)
+        elif mid is not None:
+            self.reply(mid, error={"code": -32601, "message": f"{method} not available before a browser is started"})
+
+    def run(self):
+        threading.Thread(target=self.watchdog, daemon=True).start()
+        for raw in sys.stdin:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                msg = json.loads(raw)
+            except ValueError:
+                continue
+            try:
+                self.handle(msg)
+            except Exception as e:  # never let one bad message kill the server
+                self.log("error handling message:", repr(e))
+                if msg.get("id") is not None and msg.get("method"):
+                    self.text_result(msg["id"], f"pw-pool error: {e}", True)
+        self.stop_child()
+
+
+# ---------------------------------------------------------------- CLI commands
+
+def cmd_status(a):
+    cfg = load_config()
+    here = current_pool()
+    pools = list(cfg["pools"]) if a.all or not (a.pool or here) else [a.pool or here]
+    table, aliases = ps_table(), profile_aliases()
+    out = []
+    for pool in pools:
+        rows = [profile_state(cfg, pool, p, table, aliases) for p in pool_profiles(cfg, pool)]
+        out.append({"pool": pool, "account": cfg["pools"].get(pool, {}).get("account", ""),
+                    "this_config_dir": pool == here, "profiles": rows})
+    if a.json:
+        print(json.dumps(out, indent=2))
+        return
+    for p in out:
+        tag = "  <- this config dir" if p["this_config_dir"] else ""
+        print(f"{p['pool']} ({p['account'] or 'no account label'}){tag}")
+        for st in p["profiles"]:
+            print(f"  {st['profile']:<10} {describe(st)}")
+    if not a.all and len(pools) == 1:
+        print("(pw-pool status --all for every pool)")
+
+
+def parse_ref(ref):
+    if "/" not in ref:
+        sys.exit(f"expected POOL/PROFILE, e.g. personal/chrome-1 (got {ref!r})")
+    return ref.split("/", 1)
+
+
+def cmd_release(a):
+    cfg = load_config()
+    pool, prof = parse_ref(a.profile)
+    st = profile_state(cfg, pool, prof)
+    m = st["meta"]
+    if st["state"] == "free":
+        print(f"{pool}/{prof} is already free.")
+        return
+    if st["state"] == "held":
+        owner_alive = not m.get("claude_pid") or pid_alive(m["claude_pid"])  # unknown owner = alive
+        if owner_alive and not a.force:
+            sys.exit(f"{pool}/{prof} is {describe(st)}.\nIts session is still running; "
+                     "re-run with --force only if the user agreed to close that browser.")
+        if not m.get("pid"):
+            sys.exit(f"{pool}/{prof} is locked but has no holder metadata; quit the browser by hand.")
+        os.kill(m["pid"], signal.SIGUSR1)
+        for _ in range(40):
+            time.sleep(0.5)
+            if not lock_state(pool, prof)[0]:
+                print(f"Released {pool}/{prof}.")
+                return
+        sys.exit(f"Slot pid {m['pid']} did not release {pool}/{prof} within 20s.")
+    if not a.force:
+        sys.exit(f"{pool}/{prof} is {describe(st)}; re-run with --force to quit that browser.")
+    for pid in st["pids"]:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    print(f"Sent SIGTERM to {st['pids']}.")
+
+
+def cmd_clone(a):
+    cfg = load_config()
+    pool, src = parse_ref(a.source)
+    browser = src.split("-")[0]
+    names = pool_profiles(cfg, pool, browser)
+    if src not in names:
+        sys.exit(f"{src} is not a profile in pool {pool}")
+    table, aliases = ps_table(), profile_aliases()
+    sst = profile_state(cfg, pool, src, table, aliases)
+    if not sst["exists"]:
+        sys.exit(f"{pool}/{src} does not exist yet; sign in to it first.")
+    if sst["state"] != "free":
+        sys.exit(f"{pool}/{src} is {describe(sst)} — close it first so its cookies are flushed to disk.")
+    if a.unused:
+        targets = [p for p in names if p != src and not (ROOT / pool / p).exists()]
+    else:
+        targets = [t.strip() for t in (a.to or "").split(",") if t.strip()]
+    if not targets:
+        sys.exit("nothing to clone into (use --to chrome-2,chrome-3 or --unused)")
+    for t in targets:
+        if t not in names or t == src:
+            print(f"skip {t}: not another {browser} profile in pool {pool}")
+            continue
+        dst = ROOT / pool / t
+        st = profile_state(cfg, pool, t, table, aliases)
+        if st["state"] != "free":
+            print(f"skip {t}: {describe(st)}")
+            continue
+        if dst.exists() and any(dst.iterdir()):
+            if not a.force:
+                print(f"skip {t}: already has data (use --force to replace; old copy goes to .trash/)")
+                continue
+            trash = ROOT / ".trash" / time.strftime("%Y%m%d-%H%M%S") / pool
+            trash.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(dst), trash / t)
+        elif dst.exists():
+            dst.rmdir()
+        shutil.copytree(ROOT / pool / src, dst, symlinks=True, ignore=CLONE_IGNORE)
+        print(f"cloned {pool}/{src} -> {pool}/{t}")
+
+
+def claude_json_for(cd):
+    return Path.home() / ".claude.json" if cd == Path.home() / ".claude" else cd / ".claude.json"
+
+
+def cmd_install(a):
+    cfg = load_config()
+    cd = Path(a.config_dir).expanduser().resolve()
+    if a.pool not in cfg["pools"]:
+        sys.exit(f"pool {a.pool!r} is not in {ROOT / 'pools.json'} (have: {', '.join(cfg['pools']) or 'none'})")
+    exe = str(Path(a.exe or __file__).expanduser().resolve())
+    slots, counts = [], {}
+    for b in (a.slots.split(",") if a.slots else DEFAULT_SLOTS):
+        counts[b] = counts.get(b, 0) + 1
+        slots.append((f"playwright-{b}-{counts[b]}", b))
+    env = dict(os.environ)
+    env.pop("CLAUDE_CONFIG_DIR", None)
+    if cd != Path.home() / ".claude":
+        env["CLAUDE_CONFIG_DIR"] = str(cd)
+    try:
+        existing = json.loads(claude_json_for(cd).read_text()).get("mcpServers", {})
+    except (OSError, ValueError):
+        existing = {}
+    old = [n for n in existing if n.startswith("playwright")]
+    want = [n for n, _ in slots]
+
+    def run(cmd):
+        print("$", " ".join(cmd))
+        if not a.dry_run:
+            subprocess.run(cmd, env=env, check=True, stdout=subprocess.DEVNULL)
+
+    removed = []
+    try:
+        for n in old:
+            run(["claude", "mcp", "remove", "--scope", "user", n])
+            removed.append(n)
+        for n, b in slots:
+            run(["claude", "mcp", "add", "--scope", "user", n, "--", exe, "slot",
+                 "--pool", a.pool, "--browser", b, "--name", n])
+    except subprocess.CalledProcessError:
+        print("install failed; restoring the previous playwright servers", file=sys.stderr)
+        for n in want:
+            subprocess.run(["claude", "mcp", "remove", "--scope", "user", n], env=env,
+                           capture_output=True)
+        for n in removed:
+            subprocess.run(["claude", "mcp", "add-json", "--scope", "user", n,
+                            json.dumps(existing[n])], env=env, check=False)
+        raise
+    sp = cd / "settings.json"
+    settings = json.loads(sp.read_text()) if sp.exists() else {}
+    allow = settings.setdefault("permissions", {}).setdefault("allow", [])
+    keep = [r for r in allow if not (r.startswith("mcp__playwright") and r.split("__")[1] not in want)]
+    for n in want:
+        if f"mcp__{n}__*" not in keep:
+            keep.append(f"mcp__{n}__*")
+    if keep != allow:
+        print(f"update {sp} permissions: {sorted(set(allow) ^ set(keep))}")
+        if not a.dry_run:
+            settings["permissions"]["allow"] = keep
+            sp.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"{cd}: {', '.join(want)} -> pool '{a.pool}'. New Claude sessions pick this up; running ones keep their old servers.")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="pw-pool", description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("slot", help="run as an MCP server bound to one pool (used in MCP config)")
+    s.add_argument("--pool", required=True)
+    s.add_argument("--browser", choices=BROWSERS, default="chrome")
+    s.add_argument("--name", default=None)
+    s = sub.add_parser("status", help="show which profiles are free or held")
+    s.add_argument("--pool")
+    s.add_argument("--all", action="store_true")
+    s.add_argument("--json", action="store_true")
+    s = sub.add_parser("release", help="release a profile held by a dead (or with --force, live) holder")
+    s.add_argument("profile", metavar="POOL/PROFILE")
+    s.add_argument("--force", action="store_true")
+    s = sub.add_parser("clone", help="copy a signed-in profile into other profiles of the same pool")
+    s.add_argument("source", metavar="POOL/PROFILE")
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--to", help="comma-separated target profiles, e.g. chrome-2,chrome-3")
+    g.add_argument("--unused", action="store_true", help="every profile in the pool that doesn't exist yet")
+    s.add_argument("--force", action="store_true", help="replace targets that already have data")
+    s = sub.add_parser("install", help="register slot MCP servers for a Claude config dir")
+    s.add_argument("--config-dir", required=True)
+    s.add_argument("--pool", required=True)
+    s.add_argument("--slots", help="comma-separated browsers, default chrome,chrome,firefox")
+    s.add_argument("--exe", help="path to pw-pool to register (default: this file)")
+    s.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+    if a.cmd == "slot":
+        Slot(a.pool, a.browser, a.name or f"playwright-{a.browser}").run()
+    else:
+        {"status": cmd_status, "release": cmd_release, "clone": cmd_clone, "install": cmd_install}[a.cmd](a)
+
+
+if __name__ == "__main__":
+    main()
