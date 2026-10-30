@@ -32,5 +32,3 @@ dir has its own pool. The server instructions name the pool and account.
 - After a Chrome profile is newly signed in and closed, `pw-pool clone <pool>/<that profile> --unused`
   copies its logins into the pool's never-used Chrome profiles. Use the profile that was actually
   signed in as the source.
-- If `pw-pool status` warns that a signed-out profile has a Google session, tell the user.
-  Slots skip such profiles automatically, so they're never handed out as a "clean" browser.

@@ -34,7 +34,6 @@ import os
 import re
 import shutil
 import signal
-import sqlite3
 import subprocess
 import sys
 import threading
@@ -87,28 +86,6 @@ def pool_profiles(cfg, pool, browser=None):
 
 def signed_out(cfg, pool, browser):
     return browser in cfg["pools"].get(pool, {}).get("signed_out", cfg["signed_out"])
-
-
-def google_session(profile_dir, browser):
-    """True if the profile holds Google session cookies (i.e. someone signed in to Google)."""
-    d = Path(profile_dir)
-    if browser == "firefox":
-        dbs = [d / "cookies.sqlite"]
-        sql = "select count(*) from moz_cookies where host like '%google.com' and name in ('SID','__Secure-1PSID')"
-    else:  # newer Chromium keeps cookies under Network/, older at the profile root
-        dbs = [d / "Default" / "Network" / "Cookies", d / "Default" / "Cookies"]
-        sql = "select count(*) from cookies where host_key like '%google.com' and name in ('SID','__Secure-1PSID')"
-    db = next((p for p in dbs if p.exists()), None)
-    if db is None:
-        return False
-    try:
-        con = sqlite3.connect(f"file:{db}?immutable=1", uri=True)
-        try:
-            return con.execute(sql).fetchone()[0] > 0
-        finally:
-            con.close()
-    except sqlite3.Error:
-        return False
 
 
 def ps_table():
@@ -213,8 +190,6 @@ def profile_state(cfg, pool, profile, table=None, aliases=None):
     browser = profile.split("-")[0]
     st = {"pool": pool, "profile": profile, "dir": str(d), "exists": d.exists(),
           "state": "free", "meta": meta, "signed_out": signed_out(cfg, pool, browser)}
-    if st["signed_out"] and st["exists"] and google_session(d, browser):
-        st["warning"] = "has a Google session but should be signed out"
     if held:
         st["state"] = "held"
     else:
@@ -234,11 +209,6 @@ def fmt_idle(meta):
 
 
 def describe(st):
-    text = _describe(st)
-    return f"{text} -- WARNING: {st['warning']}" if st.get("warning") else text
-
-
-def _describe(st):
     m = st["meta"]
     if st["state"] == "held":
         who = m.get("session_name") or (m.get("session_id") or "?")[:8]
@@ -463,10 +433,6 @@ class Slot:
         if d.exists() and browser_pids(d, table, aliases):
             os.close(fd)
             return False
-        if self.signed_out and d.exists() and google_session(d, self.browser):
-            self.log(f"skipping {self.pool}/{profile}: should be signed out but has a Google session")
-            os.close(fd)
-            return False
         self.lock_fd, self.profile = fd, profile
         claude_pid, sess = find_claude(table, os.getppid())
         self.meta = {"pid": os.getpid(), "slot": self.name, "pool": self.pool, "profile": profile,
@@ -631,11 +597,13 @@ class Slot:
             si = dict(init.get("serverInfo") or {})
             si["name"] = f"{si.get('name', 'Playwright')} (pw-pool {self.pool}/{self.browser})"
             init["serverInfo"] = si
+            signed_in = [b for b in BROWSERS if not signed_out(self.cfg, self.pool, b)]
             if self.signed_out:
                 who = (" DELIBERATELY SIGNED OUT of every account: it runs on a fresh in-memory profile "
                        "each launch, so nothing (cookies, logins) persists. Use it when you need a clean, "
-                       "logged-out browser (e.g. testing as an anonymous visitor). Don't sign in here; "
-                       "use a playwright-chrome-* server for signed-in work.")
+                       "logged-out browser (e.g. testing as an anonymous visitor). Don't sign in here"
+                       + (f"; use a {' or '.join(f'playwright-{b}-*' for b in signed_in)} server for "
+                          "signed-in work." if signed_in else "."))
             else:
                 who = f" signed in as {self.account}." if self.account else "."
             init["instructions"] = (
