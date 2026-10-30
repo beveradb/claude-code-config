@@ -49,7 +49,7 @@ DEFAULTS = {
     "chrome": 5,
     "firefox": 2,
     "idle_minutes": 30,
-    "signed_out": ["firefox"],  # browsers whose profiles are deliberately never signed in
+    "signed_out": ["firefox"],  # browsers that run --isolated (in-memory, never signed in)
     "mcp_command": ["npx", "@playwright/mcp@latest"],
     "mcp_args": ["--caps", "vision,pdf,devtools"],
     "pools": {},
@@ -516,10 +516,12 @@ class Slot:
             if self.lock_fd is None and not self.acquire():
                 return self.no_free_text()
             d = ROOT / self.pool / self.profile
-            d.mkdir(parents=True, exist_ok=True)
+            if not self.signed_out:
+                d.mkdir(parents=True, exist_ok=True)
             child = None
             try:
-                child = self.spawn(d)
+                # Signed-out browsers get an in-memory profile: fresh every launch, nothing persists.
+                child = self.spawn(None if self.signed_out else d)
                 init, tools = self.handshake(child)
             except Exception as e:
                 if child:
@@ -598,7 +600,7 @@ class Slot:
     def account_note(self):
         if self.signed_out:
             return (f"{self.browser} profiles are deliberately signed out of every account "
-                    "(clean, logged-out browsing)")
+                    "(fresh in-memory profile each launch, for clean logged-out browsing)")
         return f"meant to be signed in as {self.account}" if self.account else ""
 
     def use_profile(self, want):
@@ -630,8 +632,9 @@ class Slot:
             si["name"] = f"{si.get('name', 'Playwright')} (pw-pool {self.pool}/{self.browser})"
             init["serverInfo"] = si
             if self.signed_out:
-                who = (" DELIBERATELY SIGNED OUT of every account: use it when you need a clean, "
-                       "logged-out browser (e.g. testing as an anonymous visitor). Never sign in here; "
+                who = (" DELIBERATELY SIGNED OUT of every account: it runs on a fresh in-memory profile "
+                       "each launch, so nothing (cookies, logins) persists. Use it when you need a clean, "
+                       "logged-out browser (e.g. testing as an anonymous visitor). Don't sign in here; "
                        "use a playwright-chrome-* server for signed-in work.")
             else:
                 who = f" signed in as {self.account}." if self.account else "."

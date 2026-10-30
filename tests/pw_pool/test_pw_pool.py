@@ -179,6 +179,9 @@ class PwPoolTest(unittest.TestCase):
         self.assertIn("firefox signed out by design", self.cli("status", "--pool", "testpool").stdout)
 
     def test_warns_when_signed_out_profile_has_google_session(self):
+        cfg = json.loads((self.root / "pools.json").read_text())
+        cfg["firefox"] = 2
+        (self.root / "pools.json").write_text(json.dumps(cfg))
         d = self.root / "testpool" / "firefox-1"
         d.mkdir(parents=True)
         con = sqlite3.connect(d / "cookies.sqlite")
@@ -189,7 +192,10 @@ class PwPoolTest(unittest.TestCase):
         out = self.cli("status", "--pool", "testpool").stdout
         self.assertIn("WARNING: has a Google session but should be signed out", out)
         f = self.slot(browser="firefox", name="playwright-firefox-1")
-        self.assertIn("/testpool/firefox-2", text(f.call("browser_navigate")))  # tainted firefox-1 skipped
+        f.call("browser_navigate")
+        st = self.status()
+        self.assertEqual(st["firefox-1"]["state"], "free")  # tainted legacy profile skipped
+        self.assertEqual(st["firefox-2"]["state"], "held")
 
     def test_signed_out_is_configurable_per_pool(self):
         cfg = json.loads((self.root / "pools.json").read_text())
@@ -199,7 +205,16 @@ class PwPoolTest(unittest.TestCase):
         self.clients.append(f)
         self.assertIn("signed in as me@example.com", f.init()["result"]["instructions"])
 
-    def test_firefox_slot_uses_firefox_profiles(self):
+    def test_signed_out_slot_runs_isolated_but_still_claims_a_profile(self):
+        f = self.slot(browser="firefox", name="playwright-firefox-1")
+        self.assertIn("udd=None", text(f.call("browser_navigate")))  # --isolated, no profile dir
+        self.assertEqual(self.status()["firefox-1"]["state"], "held")
+        self.assertFalse((self.root / "testpool" / "firefox-1").exists())
+
+    def test_signed_in_firefox_uses_its_profile_dir(self):
+        cfg = json.loads((self.root / "pools.json").read_text())
+        cfg["pools"]["testpool"]["signed_out"] = []
+        (self.root / "pools.json").write_text(json.dumps(cfg))
         f = self.slot(browser="firefox", name="playwright-firefox-1")
         self.assertIn("/testpool/firefox-1", text(f.call("browser_navigate")))
 

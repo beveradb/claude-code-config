@@ -7,10 +7,13 @@ dir has its own pool. The server instructions name the pool and account.
 **Which browser:**
 - **Chrome (`playwright-chrome-*`) is signed in** to the pool's account, both in Chrome itself
   and in the Google session. Use it to act as the user, or for anything behind their login.
-- **Firefox (`playwright-firefox-1`) is deliberately signed out of everything.** Use it when you
-  need a clean, logged-out browser, such as testing as an anonymous visitor, checking what a
-  public page shows, or a sign-up flow. Never sign in to Firefox profiles, and never ask the
-  user to. If a Firefox task turns out to need a login, switch to a Chrome server.
+- **Firefox (`playwright-firefox-1`) is deliberately signed out of everything** (the default).
+  It runs on a fresh in-memory profile every launch, so no cookies or logins ever persist. Use it
+  when you need a clean, logged-out browser, such as testing as an anonymous visitor, checking
+  what a public page shows, or a sign-up flow. Don't sign in there or ask the user to. If a
+  Firefox task turns out to need a login, switch to a Chrome server.
+- A pool can change this (`signed_out` in `pools.json`). Each server's MCP instructions say
+  whether it is signed in or signed out, and they take precedence over this note.
 
 - **Just use a server.** The first browser call claims a free profile in the pool. Don't try
   profiles one by one. If none is free, the error says which sessions hold them.

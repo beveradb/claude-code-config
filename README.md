@@ -392,8 +392,9 @@ e.g. one Google account each) and shared safely across many parallel Claude sess
 - Slots add two tools: `browser_pool_status` (who holds what) and `browser_use_profile` (pin a
   specific profile).
 - **Chrome profiles are signed in** to the pool's account, in Chrome itself and on the web.
-  **Firefox profiles are deliberately kept signed out**, so every session also has a clean,
-  logged-out browser (`signed_out` in `pools.json`, default `["firefox"]`, overridable per pool).
+  **Firefox profiles are deliberately kept signed out**: they run Playwright's `--isolated`
+  in-memory profile, fresh every launch with nothing persisted. So every session also has a
+  clean, logged-out browser (`signed_out` in `pools.json`, default `["firefox"]`, overridable per pool).
   The Firefox slots say so in their MCP instructions. `pw-pool status` warns if one picks up a
   Google session.
 - Guidance for Claude is in `rules/playwright.md`.
