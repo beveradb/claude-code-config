@@ -229,7 +229,7 @@ Or periodically:
 
 | Command | Description | When to Use |
 |---------|-------------|-------------|
-| `/setup-playwrights` | Set up multiple isolated Playwright browser instances | Browser automation setup |
+| `/setup-playwrights` | Set up pooled, per-config-dir Playwright browser profiles (`pw-pool`) | Browser automation setup |
 
 ## Typical Session
 
@@ -370,74 +370,51 @@ rm -rf /tmp/sc-check
 Requires Python 3 (stdlib only). Design and full implementation plan:
 `docs/superpowers/specs/2026-09-09-session-continuity-design.md`.
 
-## Multi-Browser Playwright MCP Setup
+## Pooled Playwright Browser Profiles (`pw-pool`)
 
-This config includes three separate Playwright MCP server instances, each with its own persistent browser profile. This enables controlling multiple independent browser windows simultaneously from Claude Code sessions.
+Persistent, signed-in Playwright browser profiles, grouped into **pools** (one per identity,
+e.g. one Google account each) and shared safely across many parallel Claude sessions.
 
-### How It Works
+### How it works
 
-Three MCP servers are registered at user scope (in `~/.claude.json`):
+- Profiles live in `~/.playwright-profiles/<pool>/chrome-1..N` and `firefox-1..N`. Pool names,
+  account labels and counts (default 5 Chrome + 2 Firefox) come from the machine-local
+  `~/.playwright-profiles/pools.json`, which is not in this repo.
+- Each Claude config dir is bound to **exactly one pool**. It registers three small "slot" MCP
+  servers (`playwright-chrome-1`, `playwright-chrome-2`, `playwright-firefox-1`), each running
+  `bin/pw-pool slot --pool <pool> --browser <b>`.
+- A slot is a stdio proxy. It answers `initialize`/`tools/list` from a cache, so idle sessions
+  cost one small Python process per slot and no node or browser. On the first browser tool call
+  it claims a free profile in its pool with `flock`, which is released automatically if the
+  process dies, and starts the real `@playwright/mcp` on that profile.
+- The claim is released on `browser_close`, after `idle_minutes` (default 30) with no tool
+  calls, or when the session exits.
+- Slots add two tools: `browser_pool_status` (who holds what) and `browser_use_profile` (pin a
+  specific profile).
+- Guidance for Claude is in `rules/playwright.md`.
 
-| Server | Profile Directory | Tools Prefix |
-|--------|------------------|--------------|
-| `playwright-1` | `~/.playwright-profiles/profile-1` | `mcp__playwright-1__*` |
-| `playwright-2` | `~/.playwright-profiles/profile-2` | `mcp__playwright-2__*` |
-| `playwright-3` | `~/.playwright-profiles/profile-3` | `mcp__playwright-3__*` |
+### Commands
 
-Each instance:
-- Opens its own Chrome window
-- Has isolated cookies, local storage, and session data (via `--user-data-dir`)
-- Can be controlled independently and simultaneously
+```bash
+pw-pool status [--all]                         # profiles in this config dir's pool: free / held by session X / idle time
+pw-pool clone personal/chrome-1 --unused       # seed never-used profiles from a signed-in one (source must be closed)
+pw-pool release personal/chrome-2 [--force]    # free a stale claim; --force closes a live session's browser
+pw-pool install --config-dir ~/.claude --pool personal   # (re)register slots + permissions for a config dir
+```
 
 ### Setup
 
-The servers were added with:
+See `/setup-playwrights`. In short:
 
-```bash
-# Create profile directories
-mkdir -p ~/.playwright-profiles/profile-{1,2,3}
+1. Write `~/.playwright-profiles/pools.json`:
+   `{"pools": {"personal": {"account": "me@example.com"}, "work": {"account": "me@work.com"}}}`.
+   Optional keys: `chrome`, `firefox` (counts, also per pool), `idle_minutes`, `mcp_command`,
+   `mcp_args`.
+2. Run `pw-pool install --config-dir <dir> --pool <pool>` for each config dir.
+3. Sign in once in `<pool>/chrome-1` and `<pool>/firefox-1`, close them, then
+   `pw-pool clone <pool>/chrome-1 --unused` (and the same for firefox-1).
 
-# Register each instance at user scope
-claude mcp add --transport stdio playwright-1 --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.playwright-profiles/profile-1
-claude mcp add --transport stdio playwright-2 --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.playwright-profiles/profile-2
-claude mcp add --transport stdio playwright-3 --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.playwright-profiles/profile-3
-```
-
-Then add permissions to `settings.json`:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__playwright-1__*",
-      "mcp__playwright-2__*",
-      "mcp__playwright-3__*"
-    ]
-  }
-}
-```
-
-### Usage
-
-In any Claude Code session, specify which browser to use:
-
-```
-Use playwright-1 to navigate to example.com
-Use playwright-2 to review the staging site
-Use playwright-3 to check the production dashboard
-```
-
-All three can be used in parallel within a single session, or across separate terminal sessions.
-
-### Customization
-
-You can pass additional flags per-instance. For example, to add vision capabilities or use a specific browser:
-
-```bash
-claude mcp add --transport stdio playwright-1 --scope user -- npx @playwright/mcp@latest --user-data-dir ~/.playwright-profiles/profile-1 --caps vision --browser chrome
-```
-
-Run `npx @playwright/mcp@latest --help` for all available options.
+Tests: `python3 -m unittest discover -s tests/pw_pool` (uses a fake Playwright MCP, no browser).
 
 ## Requirements
 
