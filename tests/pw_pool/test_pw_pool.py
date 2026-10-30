@@ -164,7 +164,46 @@ class PwPoolTest(unittest.TestCase):
         self.assertLess(time.time() - t, 10)
         self.assertEqual(self.status()["chrome-1"]["state"], "free")
 
-    def test_firefox_slot_uses_firefox_profiles(self):
+    def test_firefox_is_signed_out_by_design(self):
+        f = SlotClient(self.env, browser="firefox", name="playwright-firefox-1")
+        self.clients.append(f)
+        ins = f.init()["result"]["instructions"]
+        self.assertIn("DELIBERATELY SIGNED OUT", ins)
+        self.assertIn("use a playwright-chrome-* server", ins)
+        self.assertNotIn("me@example.com", ins)
+        chrome = self.slot()
+        self.assertIn("me@example.com", chrome.request("initialize", {"protocolVersion": "2025-06-18"})["result"]["instructions"])
+        st = text(chrome.call("browser_pool_status"))
+        self.assertIn("firefox-1: free (signed out by design)", st)
+        self.assertIn("chrome-1: free (new, not signed in yet)", st)
+        self.assertIn("firefox signed out by design", self.cli("status", "--pool", "testpool").stdout)
+
+    def test_signed_out_slot_ignores_leftover_profile_dir(self):
+        d = self.root / "testpool" / "firefox-1"
+        d.mkdir(parents=True)
+        (d / "cookies.sqlite").write_text("leftover legacy data")
+        f = self.slot(browser="firefox", name="playwright-firefox-1")
+        self.assertIn("udd=None", text(f.call("browser_navigate")))
+        self.assertEqual(self.status()["firefox-1"]["state"], "held")
+
+    def test_signed_out_is_configurable_per_pool(self):
+        cfg = json.loads((self.root / "pools.json").read_text())
+        cfg["pools"]["testpool"]["signed_out"] = []
+        (self.root / "pools.json").write_text(json.dumps(cfg))
+        f = SlotClient(self.env, browser="firefox", name="playwright-firefox-1")
+        self.clients.append(f)
+        self.assertIn("signed in as me@example.com", f.init()["result"]["instructions"])
+
+    def test_signed_out_slot_runs_isolated_but_still_claims_a_profile(self):
+        f = self.slot(browser="firefox", name="playwright-firefox-1")
+        self.assertIn("udd=None", text(f.call("browser_navigate")))  # --isolated, no profile dir
+        self.assertEqual(self.status()["firefox-1"]["state"], "held")
+        self.assertFalse((self.root / "testpool" / "firefox-1").exists())
+
+    def test_signed_in_firefox_uses_its_profile_dir(self):
+        cfg = json.loads((self.root / "pools.json").read_text())
+        cfg["pools"]["testpool"]["signed_out"] = []
+        (self.root / "pools.json").write_text(json.dumps(cfg))
         f = self.slot(browser="firefox", name="playwright-firefox-1")
         self.assertIn("/testpool/firefox-1", text(f.call("browser_navigate")))
 

@@ -391,6 +391,11 @@ e.g. one Google account each) and shared safely across many parallel Claude sess
   calls, or when the session exits.
 - Slots add two tools: `browser_pool_status` (who holds what) and `browser_use_profile` (pin a
   specific profile).
+- **Chrome profiles are signed in** to the pool's account, in Chrome itself and on the web.
+  **Firefox profiles are deliberately kept signed out**: they run Playwright's `--isolated`
+  in-memory profile, fresh every launch with nothing persisted. So every session also has a
+  clean, logged-out browser (`signed_out` in `pools.json`, default `["firefox"]`, overridable per pool).
+  The Firefox slots say so in their MCP instructions.
 - Guidance for Claude is in `rules/playwright.md`.
 
 ### Commands
@@ -408,11 +413,11 @@ See `/setup-playwrights`. In short:
 
 1. Write `~/.playwright-profiles/pools.json`:
    `{"pools": {"personal": {"account": "me@example.com"}, "work": {"account": "me@work.com"}}}`.
-   Optional keys: `chrome`, `firefox` (counts, also per pool), `idle_minutes`, `mcp_command`,
-   `mcp_args`.
+   Optional keys: `chrome`, `firefox` (counts, also per pool), `signed_out` (browsers kept
+   logged out, default `["firefox"]`, also per pool), `idle_minutes`, `mcp_command`, `mcp_args`.
 2. Run `pw-pool install --config-dir <dir> --pool <pool>` for each config dir.
-3. Sign in once in `<pool>/chrome-1` and `<pool>/firefox-1`, close them, then
-   `pw-pool clone <pool>/chrome-1 --unused` (and the same for firefox-1).
+3. Sign in once in `<pool>/chrome-1`, to the Google account and to Chrome itself. Close it, then
+   run `pw-pool clone <pool>/chrome-1 --unused`. Leave the Firefox profiles signed out.
 
 Tests: `python3 -m unittest discover -s tests/pw_pool` (uses a fake Playwright MCP, no browser).
 

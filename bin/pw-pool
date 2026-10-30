@@ -3,7 +3,8 @@
 
 Layout (root: $PW_POOL_ROOT, default ~/.playwright-profiles):
 
-    pools.json                     pool names, signed-in account labels, profile counts
+    pools.json                     pool names, signed-in account labels, profile counts, which
+                                   browsers stay signed out (default: firefox, for clean sessions)
     <pool>/chrome-1 .. chrome-N    persistent Chrome profiles (--user-data-dir)
     <pool>/firefox-1 .. firefox-N  persistent Firefox profiles
     .locks/<pool>.<profile>.lock   flock held by the slot using the profile (+ JSON metadata)
@@ -47,6 +48,7 @@ DEFAULTS = {
     "chrome": 5,
     "firefox": 2,
     "idle_minutes": 30,
+    "signed_out": ["firefox"],  # browsers that run --isolated (in-memory, never signed in)
     "mcp_command": ["npx", "@playwright/mcp@latest"],
     "mcp_args": ["--caps", "vision,pdf,devtools"],
     "pools": {},
@@ -80,6 +82,10 @@ def pool_profiles(cfg, pool, browser=None):
             continue
         out += [f"{b}-{i}" for i in range(1, int(pc.get(b, cfg[b])) + 1)]
     return out
+
+
+def signed_out(cfg, pool, browser):
+    return browser in cfg["pools"].get(pool, {}).get("signed_out", cfg["signed_out"])
 
 
 def ps_table():
@@ -181,8 +187,9 @@ def profile_state(cfg, pool, profile, table=None, aliases=None):
     aliases = aliases if aliases is not None else profile_aliases()
     d = ROOT / pool / profile
     held, meta = lock_state(pool, profile)
+    browser = profile.split("-")[0]
     st = {"pool": pool, "profile": profile, "dir": str(d), "exists": d.exists(),
-          "state": "free", "meta": meta}
+          "state": "free", "meta": meta, "signed_out": signed_out(cfg, pool, browser)}
     if held:
         st["state"] = "held"
     else:
@@ -209,6 +216,8 @@ def describe(st):
         return f"held by {m.get('slot', '?')} in session '{who}' ({cwd}), {fmt_idle(m)}"
     if st["state"] == "open-unmanaged":
         return f"open by a browser outside the pool (pid {', '.join(map(str, st['pids']))})"
+    if st.get("signed_out"):
+        return "free (signed out by design)"
     return "free" if st["exists"] else "free (new, not signed in yet)"
 
 
@@ -257,6 +266,7 @@ class Slot:
         self.cfg = load_config()
         self.pool, self.browser, self.name = pool, browser, name
         self.account = self.cfg["pools"].get(pool, {}).get("account", "")
+        self.signed_out = signed_out(self.cfg, pool, browser)
         self.idle = float(os.environ.get("PW_POOL_IDLE_MINUTES", self.cfg["idle_minutes"])) * 60
         self.out_lock = threading.Lock()
         self.state_lock = threading.RLock()
@@ -472,10 +482,12 @@ class Slot:
             if self.lock_fd is None and not self.acquire():
                 return self.no_free_text()
             d = ROOT / self.pool / self.profile
-            d.mkdir(parents=True, exist_ok=True)
+            if not self.signed_out:
+                d.mkdir(parents=True, exist_ok=True)
             child = None
             try:
-                child = self.spawn(d)
+                # Signed-out browsers get an in-memory profile: fresh every launch, nothing persists.
+                child = self.spawn(None if self.signed_out else d)
                 init, tools = self.handshake(child)
             except Exception as e:
                 if child:
@@ -541,7 +553,7 @@ class Slot:
     # -- own tools
     def status_text(self):
         table, aliases = ps_table(), profile_aliases()
-        acct = f", meant to be signed in as {self.account}" if self.account else ""
+        acct = f", {self.account_note()}" if self.account_note() else ""
         head = (f"This server ({self.name}) is using {self.pool}/{self.profile}" if self.lock_fd is not None
                 else f"This server ({self.name}) has no profile yet; the next browser call picks one")
         lines = [head + ".", f"Pool '{self.pool}'{acct}:"]
@@ -550,6 +562,12 @@ class Slot:
             mine = " (this server)" if st["meta"].get("pid") == os.getpid() and st["state"] == "held" else ""
             lines.append(f"  {p}: {describe(st)}{mine}")
         return "\n".join(lines)
+
+    def account_note(self):
+        if self.signed_out:
+            return (f"{self.browser} profiles are deliberately signed out of every account "
+                    "(fresh in-memory profile each launch, for clean logged-out browsing)")
+        return f"meant to be signed in as {self.account}" if self.account else ""
 
     def use_profile(self, want):
         if want not in pool_profiles(self.cfg, self.pool, self.browser):
@@ -579,9 +597,17 @@ class Slot:
             si = dict(init.get("serverInfo") or {})
             si["name"] = f"{si.get('name', 'Playwright')} (pw-pool {self.pool}/{self.browser})"
             init["serverInfo"] = si
-            acct = f" signed in as {self.account}" if self.account else ""
+            signed_in = [b for b in BROWSERS if not signed_out(self.cfg, self.pool, b)]
+            if self.signed_out:
+                who = (" DELIBERATELY SIGNED OUT of every account: it runs on a fresh in-memory profile "
+                       "each launch, so nothing (cookies, logins) persists. Use it when you need a clean, "
+                       "logged-out browser (e.g. testing as an anonymous visitor). Don't sign in here"
+                       + (f"; use a {' or '.join(f'playwright-{b}-*' for b in signed_in)} server for "
+                          "signed-in work." if signed_in else "."))
+            else:
+                who = f" signed in as {self.account}." if self.account else "."
             init["instructions"] = (
-                f"{self.name}: a {self.browser} browser from the '{self.pool}' profile pool{acct}. "
+                f"{self.name}: a {self.browser} browser from the '{self.pool}' profile pool,{who} "
                 "A free profile is claimed on the first browser call and released on browser_close "
                 "(call it when the browser task is done) or after idle. browser_pool_status shows who holds what.")
             self.reply(mid, init)
@@ -653,7 +679,11 @@ def cmd_status(a):
         return
     for p in out:
         tag = "  <- this config dir" if p["this_config_dir"] else ""
-        print(f"{p['pool']} ({p['account'] or 'no account label'}){tag}")
+        out_b = [b for b in BROWSERS if signed_out(cfg, p["pool"], b)]
+        label = p["account"] or "no account label"
+        if out_b:
+            label = f"{label}; {'/'.join(out_b)} signed out by design"
+        print(f"{p['pool']} ({label}){tag}")
         for st in p["profiles"]:
             print(f"  {st['profile']:<10} {describe(st)}")
     if not a.all and len(pools) == 1:
