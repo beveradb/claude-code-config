@@ -172,6 +172,19 @@ class PwPoolTest(unittest.TestCase):
         # The next call transparently re-acquires.
         self.assertIn("chrome-1", text(c.call("browser_navigate")))
 
+    def test_pinned_profile_without_browser_is_idled_out(self):
+        self.env["PW_POOL_IDLE_MINUTES"] = str(1 / 60)
+        c = self.slot()
+        c.call("browser_use_profile", {"profile": "chrome-2"})
+        self.assertTrue(self.wait_for(lambda: self.status()["chrome-2"]["state"] == "free"))
+
+    def test_status_without_session_metadata(self):
+        c = SlotClient(dict(self.env, CLAUDE_CONFIG_DIR=str(self.root / "nocfg")))
+        self.clients.append(c)
+        c.init()
+        c.call("browser_navigate")
+        self.assertIn("chrome-1: held by playwright-chrome-1", text(c.call("browser_pool_status")))
+
     def test_inflight_call_is_not_idled_out(self):
         self.env["PW_POOL_IDLE_MINUTES"] = "0"  # disabled
         c = self.slot()

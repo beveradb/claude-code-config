@@ -203,7 +203,7 @@ def fmt_idle(meta):
 def describe(st):
     m = st["meta"]
     if st["state"] == "held":
-        who = m.get("session_name") or m.get("session_id", "?")[:8]
+        who = m.get("session_name") or (m.get("session_id") or "?")[:8]
         cwd = (m.get("cwd") or "").replace(str(Path.home()), "~")
         return f"held by {m.get('slot', '?')} in session '{who}' ({cwd}), {fmt_idle(m)}"
     if st["state"] == "open-unmanaged":
@@ -525,7 +525,7 @@ class Slot:
                 self.release_requested.clear()
                 self.log("release requested")
                 self.stop_child()
-            elif (self.child and not self.inflight and self.idle > 0
+            elif (self.lock_fd is not None and not self.inflight and self.idle > 0
                   and time.time() - self.last_activity > self.idle):
                 self.log(f"idle for {self.idle / 60:.0f}m, closing browser")
                 self.stop_child()

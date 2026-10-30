@@ -59,7 +59,7 @@ Legacy profiles are top-level dirs such as `~/.playwright-profiles/chrome-1`.
 2. Propose a mapping to `<pool>/<browser>-N` and confirm it with `AskUserQuestion`.
 3. For each profile, make sure no browser has it open (`pw-pool status --all` shows
    `open by a browser outside the pool`). Then:
-   `mv ~/.playwright-profiles/chrome-3 ~/.playwright-profiles/personal/chrome-1 && ln -s personal/chrome-1 ~/.playwright-profiles/chrome-3`.
+   `mkdir -p ~/.playwright-profiles/personal && mv ~/.playwright-profiles/chrome-3 ~/.playwright-profiles/personal/chrome-1 && ln -s personal/chrome-1 ~/.playwright-profiles/chrome-3`.
    The symlink keeps still-running sessions on the legacy servers pointed at the same
    profile, and pw-pool treats a browser using it as "in use".
 4. Profiles that aren't needed go to `~/.playwright-profiles/.trash/`. Never delete profile
