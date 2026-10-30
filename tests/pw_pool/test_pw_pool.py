@@ -227,13 +227,11 @@ class PwPoolTest(unittest.TestCase):
         c.call("browser_navigate")
         owner = self.status()["chrome-1"]["meta"].get("claude_pid")
         r = self.cli("release", "testpool/chrome-1", check=False)
-        if owner:  # running under Claude Code: the owning session is alive
-            self.assertNotEqual(r.returncode, 0)
-            self.assertIn("--force", r.stderr)
-            self.assertEqual(self.status()["chrome-1"]["state"], "held")
-            self.cli("release", "testpool/chrome-1", "--force")
-        else:
-            self.assertEqual(r.returncode, 0, r.stderr)
+        # Under Claude Code the owner is alive; outside it the owner is unknown. Both need --force.
+        self.assertNotEqual(r.returncode, 0, owner)
+        self.assertIn("--force", r.stderr)
+        self.assertEqual(self.status()["chrome-1"]["state"], "held")
+        self.cli("release", "testpool/chrome-1", "--force")
         self.assertEqual(self.status()["chrome-1"]["state"], "free")
         self.assertEqual(c.p.poll(), None)  # the slot itself keeps running
         self.assertIn("chrome-1", text(c.call("browser_navigate")))
@@ -261,6 +259,22 @@ class PwPoolTest(unittest.TestCase):
             self.assertEqual(self.status()["chrome-1"]["state"], "open-unmanaged")
             c = self.slot()
             self.assertIn("/testpool/chrome-2", text(c.call("browser_navigate")))
+        finally:
+            fake.kill()
+            fake.wait()
+
+    def test_profile_10_does_not_shadow_profile_1(self):
+        cfg = json.loads((self.root / "pools.json").read_text())
+        cfg["chrome"] = 10
+        (self.root / "pools.json").write_text(json.dumps(cfg))
+        d = self.root / "testpool" / "chrome-10"
+        d.mkdir(parents=True)
+        (self.root / "testpool" / "chrome-1").mkdir()
+        fake = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", f"--user-data-dir={d}"])
+        try:
+            st = self.status()
+            self.assertEqual(st["chrome-10"]["state"], "open-unmanaged")
+            self.assertEqual(st["chrome-1"]["state"], "free")
         finally:
             fake.kill()
             fake.wait()

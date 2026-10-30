@@ -30,6 +30,7 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -122,7 +123,7 @@ def browser_pids(profile_dir, table, aliases):
         if "playwright-mcp" in cmd or "npm exec" in cmd or "pw-pool" in cmd:
             continue
         for p in paths:
-            if f"--user-data-dir={p}" in cmd or f"-profile {p}" in cmd:
+            if re.search(rf"(?:--user-data-dir=|-profile ){re.escape(p)}(?=\s|$)", cmd):
                 hits.append(pid)
                 break
     return hits
@@ -472,10 +473,13 @@ class Slot:
                 return self.no_free_text()
             d = ROOT / self.pool / self.profile
             d.mkdir(parents=True, exist_ok=True)
+            child = None
             try:
                 child = self.spawn(d)
                 init, tools = self.handshake(child)
             except Exception as e:
+                if child:
+                    self.kill(child)
                 self.release_lock()
                 return f"Could not start Playwright on {self.pool}/{self.profile}: {e}"
             self.child = child
@@ -671,10 +675,12 @@ def cmd_release(a):
         print(f"{pool}/{prof} is already free.")
         return
     if st["state"] == "held":
-        owner_alive = m.get("claude_pid") and pid_alive(m["claude_pid"])
+        owner_alive = not m.get("claude_pid") or pid_alive(m["claude_pid"])  # unknown owner = alive
         if owner_alive and not a.force:
             sys.exit(f"{pool}/{prof} is {describe(st)}.\nIts session is still running; "
                      "re-run with --force only if the user agreed to close that browser.")
+        if not m.get("pid"):
+            sys.exit(f"{pool}/{prof} is locked but has no holder metadata; quit the browser by hand.")
         os.kill(m["pid"], signal.SIGUSR1)
         for _ in range(40):
             time.sleep(0.5)
@@ -763,11 +769,23 @@ def cmd_install(a):
         if not a.dry_run:
             subprocess.run(cmd, env=env, check=True, stdout=subprocess.DEVNULL)
 
-    for n in old:
-        run(["claude", "mcp", "remove", "--scope", "user", n])
-    for n, b in slots:
-        run(["claude", "mcp", "add", "--scope", "user", n, "--", exe, "slot",
-             "--pool", a.pool, "--browser", b, "--name", n])
+    removed = []
+    try:
+        for n in old:
+            run(["claude", "mcp", "remove", "--scope", "user", n])
+            removed.append(n)
+        for n, b in slots:
+            run(["claude", "mcp", "add", "--scope", "user", n, "--", exe, "slot",
+                 "--pool", a.pool, "--browser", b, "--name", n])
+    except subprocess.CalledProcessError:
+        print("install failed; restoring the previous playwright servers", file=sys.stderr)
+        for n in want:
+            subprocess.run(["claude", "mcp", "remove", "--scope", "user", n], env=env,
+                           capture_output=True)
+        for n in removed:
+            subprocess.run(["claude", "mcp", "add-json", "--scope", "user", n,
+                            json.dumps(existing[n])], env=env, check=False)
+        raise
     sp = cd / "settings.json"
     settings = json.loads(sp.read_text()) if sp.exists() else {}
     allow = settings.setdefault("permissions", {}).setdefault("allow", [])
