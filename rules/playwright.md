@@ -15,8 +15,8 @@ dir has its own pool. The server instructions name the pool and account.
 - **Just use a server.** The first browser call claims a free profile in the pool. Don't try
   profiles one by one. If none is free, the error says which sessions hold them.
 - **Check the account before acting as the user in Chrome.** Pages can show the wrong Google identity.
-  If a profile is signed out or on a different account, say so and ask the user to sign in
-  in that window. Never type passwords yourself.
+  If a Chrome profile is signed out or on a different account, say so and ask the user to
+  sign in in that window. Never type passwords yourself.
 - **Close it when done.** Call `browser_close` as soon as the browser part of a task is
   finished, before long non-browser work or waiting on the user for something unrelated.
   This releases the profile for other sessions. Idle browsers auto-close after 30 min.
