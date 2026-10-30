@@ -91,12 +91,15 @@ def signed_out(cfg, pool, browser):
 
 def google_session(profile_dir, browser):
     """True if the profile holds Google session cookies (i.e. someone signed in to Google)."""
-    db, sql = ((Path(profile_dir) / "cookies.sqlite",
-                "select count(*) from moz_cookies where host like '%google.com' and name in ('SID','__Secure-1PSID')")
-               if browser == "firefox" else
-               (Path(profile_dir) / "Default" / "Cookies",
-                "select count(*) from cookies where host_key like '%google.com' and name in ('SID','__Secure-1PSID')"))
-    if not db.exists():
+    d = Path(profile_dir)
+    if browser == "firefox":
+        dbs = [d / "cookies.sqlite"]
+        sql = "select count(*) from moz_cookies where host like '%google.com' and name in ('SID','__Secure-1PSID')"
+    else:  # newer Chromium keeps cookies under Network/, older at the profile root
+        dbs = [d / "Default" / "Network" / "Cookies", d / "Default" / "Cookies"]
+        sql = "select count(*) from cookies where host_key like '%google.com' and name in ('SID','__Secure-1PSID')"
+    db = next((p for p in dbs if p.exists()), None)
+    if db is None:
         return False
     try:
         con = sqlite3.connect(f"file:{db}?immutable=1", uri=True)
@@ -458,6 +461,10 @@ class Slot:
             os.close(fd)
             return False
         if d.exists() and browser_pids(d, table, aliases):
+            os.close(fd)
+            return False
+        if self.signed_out and d.exists() and google_session(d, self.browser):
+            self.log(f"skipping {self.pool}/{profile}: should be signed out but has a Google session")
             os.close(fd)
             return False
         self.lock_fd, self.profile = fd, profile

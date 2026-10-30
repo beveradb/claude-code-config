@@ -188,6 +188,8 @@ class PwPoolTest(unittest.TestCase):
         con.close()
         out = self.cli("status", "--pool", "testpool").stdout
         self.assertIn("WARNING: has a Google session but should be signed out", out)
+        f = self.slot(browser="firefox", name="playwright-firefox-1")
+        self.assertIn("/testpool/firefox-2", text(f.call("browser_navigate")))  # tainted firefox-1 skipped
 
     def test_signed_out_is_configurable_per_pool(self):
         cfg = json.loads((self.root / "pools.json").read_text())

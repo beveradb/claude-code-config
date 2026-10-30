@@ -26,7 +26,8 @@ dir has its own pool. The server instructions name the pool and account.
   the user's OK. A release without `--force` only clears claims whose session has exited.
 - To use a specific profile (e.g. the one the user just signed in to), call
   `browser_use_profile {profile: "chrome-3"}`.
-- After a Chrome profile is newly signed in and closed, `pw-pool clone <pool>/chrome-1 --unused`
-  copies its logins into the pool's never-used Chrome profiles.
-- If `pw-pool status` warns that a signed-out profile has a Google session, tell the user. Don't
-  use that profile as a clean browser until it's signed out again.
+- After a Chrome profile is newly signed in and closed, `pw-pool clone <pool>/<that profile> --unused`
+  copies its logins into the pool's never-used Chrome profiles. Use the profile that was actually
+  signed in as the source.
+- If `pw-pool status` warns that a signed-out profile has a Google session, tell the user.
+  Slots skip such profiles automatically, so they're never handed out as a "clean" browser.
