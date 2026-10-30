@@ -94,8 +94,9 @@ that contain project-specific (Aquarius) markers; bypass only with `--no-verify`
   them). Files or dirs, any cwd; `-s` = status only, `-j N` parallel, `-f GB` free-disk floor.
   Use before reading anything under `~/AB Dropbox/`. No programmatic "make online-only" — Andrew
   frees space via Finder → Dropbox → Make Online-Only. Docs: `~/Projects/beveradb/dropbox-materialize/`.
-- **`pw-pool`**: pooled, signed-in Playwright browser profiles. Each config dir has one pool,
-  and its `playwright-*` MCP servers claim a free profile on first use. `pw-pool status [--all]`
+- **`pw-pool`**: pooled Playwright browser profiles. Each config dir has one pool, and its
+  `playwright-*` MCP servers claim a free profile on first use. Chrome is signed in to the
+  pool's account; Firefox is deliberately signed out, for clean logged-out browsing. `pw-pool status [--all]`
   shows who holds what; `pw-pool clone <pool>/<profile> --unused` seeds new profiles. See
   `rules/playwright.md` and README → "Pooled Playwright Browser Profiles".
 

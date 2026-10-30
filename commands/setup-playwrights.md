@@ -31,14 +31,15 @@ For each config dir, read its MCP servers (`~/.claude.json` for `~/.claude`, oth
 If `pools.json` is missing or the user wants changes, use `AskUserQuestion` to confirm:
 - **Pools:** one per identity/config dir, and the account each is signed in to.
 - **Which config dir uses which pool.** Exactly one pool per config dir.
-- **Counts:** default 5 Chrome + 2 Firefox per pool.
+- **Counts:** default 5 Chrome (signed in) + 2 Firefox (kept signed out, for clean logged-out
+  browsing) per pool.
 - **Idle timeout:** default 30 min.
 
 Write `~/.playwright-profiles/pools.json`:
 
 ```json
 {
-  "chrome": 5, "firefox": 2, "idle_minutes": 30,
+  "chrome": 5, "firefox": 2, "idle_minutes": 30, "signed_out": ["firefox"],
   "pools": {
     "personal": {"account": "me@example.com"},
     "work": {"account": "me@work.example", "chrome": 3}
@@ -80,13 +81,19 @@ Show the dry run, then run it without `--dry-run`. It:
 
 Always register the canonical `~/.claude/bin/pw-pool`, so every config dir runs the same code.
 
-## Step 4: Seed logins
+## Step 4: Seed logins (Chrome only)
 
-For each pool, ask the user to sign in once in `chrome-1` and `firefox-1`:
-1. Open them with the slot tools from a session in that config dir.
-2. Call `browser_close`.
-3. Clone: `pw-pool clone <pool>/chrome-1 --unused` (and the same for firefox-1). The source
-   must be closed.
+Firefox profiles stay **signed out** on purpose. Never seed or sign in to them.
+
+For each pool, one pool at a time:
+1. Open `<pool>/chrome-1` headed through a pw-pool slot, never in plain Chrome. Playwright's
+   mock keychain means cookies saved by normal Chrome come back logged out.
+2. Show a labelled `data:` page naming the pool and the account, so the user can tell which
+   window is which.
+3. Ask the user to sign in to Google **and** to Chrome itself (profile avatar, top right) as
+   that account.
+4. Call `browser_close`, then check `Default/Preferences` → `account_info[].email`.
+5. Run `pw-pool clone <pool>/chrome-1 --unused`.
 
 ## Step 5: Verify
 

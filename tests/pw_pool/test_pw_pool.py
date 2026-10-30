@@ -5,6 +5,7 @@ Run: python3 -m unittest discover -s tests/pw_pool -v
 import json
 import os
 import queue
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -163,6 +164,38 @@ class PwPoolTest(unittest.TestCase):
         self.assertIn("Could not start Playwright", text(r))
         self.assertLess(time.time() - t, 10)
         self.assertEqual(self.status()["chrome-1"]["state"], "free")
+
+    def test_firefox_is_signed_out_by_design(self):
+        f = SlotClient(self.env, browser="firefox", name="playwright-firefox-1")
+        self.clients.append(f)
+        ins = f.init()["result"]["instructions"]
+        self.assertIn("DELIBERATELY SIGNED OUT", ins)
+        self.assertNotIn("me@example.com", ins)
+        chrome = self.slot()
+        self.assertIn("me@example.com", chrome.request("initialize", {"protocolVersion": "2025-06-18"})["result"]["instructions"])
+        st = text(chrome.call("browser_pool_status"))
+        self.assertIn("firefox-1: free (signed out by design)", st)
+        self.assertIn("chrome-1: free (new, not signed in yet)", st)
+        self.assertIn("firefox signed out by design", self.cli("status", "--pool", "testpool").stdout)
+
+    def test_warns_when_signed_out_profile_has_google_session(self):
+        d = self.root / "testpool" / "firefox-1"
+        d.mkdir(parents=True)
+        con = sqlite3.connect(d / "cookies.sqlite")
+        con.execute("create table moz_cookies (host text, name text)")
+        con.execute("insert into moz_cookies values ('.google.com', 'SID')")
+        con.commit()
+        con.close()
+        out = self.cli("status", "--pool", "testpool").stdout
+        self.assertIn("WARNING: has a Google session but should be signed out", out)
+
+    def test_signed_out_is_configurable_per_pool(self):
+        cfg = json.loads((self.root / "pools.json").read_text())
+        cfg["pools"]["testpool"]["signed_out"] = []
+        (self.root / "pools.json").write_text(json.dumps(cfg))
+        f = SlotClient(self.env, browser="firefox", name="playwright-firefox-1")
+        self.clients.append(f)
+        self.assertIn("signed in as me@example.com", f.init()["result"]["instructions"])
 
     def test_firefox_slot_uses_firefox_profiles(self):
         f = self.slot(browser="firefox", name="playwright-firefox-1")
