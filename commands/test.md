@@ -135,7 +135,7 @@ When tests fail:
 
 | Command | Purpose |
 |---------|---------|
-| `/coderabbit` | Run CodeRabbit CLI review after tests pass |
+| `/coderabbit` | Run local Superpowers code review after tests pass |
 | `/docs-review` | Check if docs need updates |
 | `/pr` | Create PR after all checks pass |
 | `/shipit` | Run all remaining steps and ship to prod |

@@ -1,57 +1,21 @@
 ---
-description: Run CodeRabbit CLI review (with Superpowers review fallback) and fix issues before PR
+description: Run a local Superpowers code review and fix issues before PR
 allowed-tools: Read, Glob, Grep, Edit, Write, Bash, Skill, Task
 ---
 
-# Code Review (CodeRabbit + Superpowers Fallback)
+# Code Review (Superpowers)
 
-Run a local code review and fix any issues before creating a PR. Prefer the CodeRabbit CLI; fall back to the **Superpowers code review** (`superpowers:requesting-code-review`) whenever CodeRabbit is unavailable, rate-limited, errors out, or is explicitly skipped.
+Run a local code review and fix any issues before creating a PR, using the **Superpowers code review** (`superpowers:requesting-code-review`), which dispatches a code-reviewer subagent locally with no external dependency.
+
+> The command keeps the name `/coderabbit` so `/pr`, `/shipit`, and other workflow commands that reference it keep working. The CodeRabbit CLI is no longer used.
 
 **Argument (optional):** $ARGUMENTS
 - `uncommitted` - review working changes (default if nothing committed)
 - `committed` - review committed changes vs main (default if commits exist)
-- `superpowers` (alias: `agent`) - skip CodeRabbit entirely, use the Superpowers reviewer
-- `--no-fallback` - do not fall back if CodeRabbit fails (report and stop)
-
-Arguments can be combined, e.g. `committed superpowers` or `uncommitted --no-fallback`.
-
-## Reviewer Selection
-
-Two reviewers are available:
-
-1. **CodeRabbit CLI** (primary) — thorough, but depends on an external service with rate limits and auth.
-2. **Superpowers code review** (fallback) — invokes the `superpowers:requesting-code-review` skill, which dispatches a code-reviewer subagent locally with no external dependency.
-
-Decision flow:
-- If `$ARGUMENTS` contains `superpowers` or `agent` → go straight to the fallback path (Step 3b).
-- Otherwise, try CodeRabbit (Step 3a). If it fails with any unavailability signal below, fall back to Superpowers review unless `--no-fallback` was passed.
-
-**CodeRabbit unavailability signals** (treat any as "unavailable"):
-- Binary missing on PATH
-- Not authenticated (`coderabbit auth status` reports logged out / no token)
-- Exit code non-zero AND stderr/stdout contains any of: `rate limit`, `rate-limit`, `429`, `quota`, `too many requests`, `unauthorized`, `authentication`, `auth required`, `login`, `network`, `timeout`, `ECONNREFUSED`, `ENOTFOUND`, `service unavailable`, `503`, `502`, `500`
-- Command hangs past the timeout (see Step 3a)
 
 ## Instructions
 
-### Step 1: Check Prerequisites
-
-If `$ARGUMENTS` contains `superpowers` or `agent`, skip this step and go to Step 3b.
-
-Verify the CodeRabbit CLI is installed and authenticated:
-```bash
-which coderabbit && coderabbit --version
-coderabbit auth status 2>&1
-```
-
-- Binary missing:
-  - `--no-fallback` set → tell the user to install with `npm install -g @coderabbitai/cli` (or `curl -fsSL https://cli.coderabbit.ai/install.sh | sh`) and stop.
-  - Otherwise → note CodeRabbit is unavailable and proceed to Step 3b.
-- Binary present but not authenticated:
-  - `--no-fallback` set → tell the user to run `coderabbit auth login` and stop.
-  - Otherwise → note CodeRabbit is unavailable (not authenticated) and proceed to Step 3b.
-
-### Step 2: Determine What to Review
+### Step 1: Determine What to Review
 
 ```bash
 git status --porcelain
@@ -65,48 +29,7 @@ If `$ARGUMENTS` specifies `committed` or `uncommitted`, use that. Otherwise:
 
 Record this as `$REVIEW_TYPE` for the remainder of the command.
 
-### Step 3a: Run CodeRabbit Review (primary path)
-
-The installed CLI uses the **`review` subcommand**. Since CLI v0.7.x the scope is chosen with **boolean flags** — `--plain` and `--type` were removed (passing them fails immediately with `unknown option`). Plain text is now the default output. Untracked (never `git add`-ed) files are **not** reviewed unless you pass `--include-untracked`. CodeRabbit can take 5-30+ minutes, so cap it with `timeout` and run it in the background if the foreground Bash cap is shorter than the timeout.
-
-Map `$REVIEW_TYPE` to a scope flag:
-- `committed` → `--committed`
-- `uncommitted` → `--uncommitted --include-untracked` (so brand-new files are reviewed too)
-- all tracked changes → no scope flag (add `--include-untracked` to also review new, un-added files)
-
-```bash
-# Correct invocation for CLI v0.7.x/v0.8.x (verified on 0.8.2):
-#   coderabbit review [--committed|--uncommitted [--include-untracked]] [--base main]
-# Add --agent for structured findings you want to parse programmatically.
-# If unsure of the flags on the installed version, check `coderabbit review --help` first.
-SCOPE_FLAG="--$REVIEW_TYPE"   # --committed or --uncommitted
-[ "$REVIEW_TYPE" = uncommitted ] && SCOPE_FLAG="$SCOPE_FLAG --include-untracked"
-timeout 2100 coderabbit review $SCOPE_FLAG --base main 2>&1
-CODERABBIT_EXIT=$?
-```
-
-For long runs, prefer launching in the background and monitoring rather than blocking:
-```bash
-LOG="$SCRATCH/coderabbit.log"   # use the session scratchpad dir
-nohup coderabbit review $SCOPE_FLAG --base main > "$LOG" 2>&1 &
-CR_PID=$!
-# Monitor with: while kill -0 $CR_PID 2>/dev/null; do sleep 10; done; cat "$LOG"
-```
-
-The plain output streams progress lines ("Writing review comments… still working") before the findings; skip to the text after the last progress line when parsing. An `error: unknown option` in the output means the flags changed again — run `coderabbit review --help` and adapt rather than falling back.
-
-Inspect the exit code and output:
-
-- **Exit 0** → review succeeded, proceed to Step 4.
-- **Exit 124** (timeout) → treat as unavailable.
-- **Non-zero exit** → scan output for unavailability signals (listed above). If matched, treat as unavailable.
-- **Any other non-zero exit** → surface the error; if `--no-fallback`, stop. Otherwise treat as unavailable.
-
-If unavailable:
-- Tell the user: "CodeRabbit unavailable (reason: <brief>). Falling back to Superpowers code review."
-- Proceed to Step 3b.
-
-### Step 3b: Run Superpowers Review (fallback path)
+### Step 2: Run Superpowers Review
 
 Invoke the Superpowers code review skill:
 
@@ -117,21 +40,21 @@ Skill: superpowers:requesting-code-review
 Give the skill the review scope so it crafts the right context for its reviewer subagent:
 - Base: `main`. Diff command by scope:
   - `committed` → `git diff main..HEAD` (and `git log --oneline main..HEAD` for commit messages)
-  - `uncommitted` → `git diff` and `git diff --staged`
-- Ask for findings grouped as **Must fix / Should fix / Optional**, each with file:line, a one-sentence description, and a suggested fix, so Step 4 parsing is uniform with CodeRabbit's shape.
+  - `uncommitted` → `git diff` and `git diff --staged`, plus new untracked files (`git ls-files --others --exclude-standard`) — read those in full, since they don't appear in either diff
+- Ask for findings grouped as **Must fix / Should fix / Optional**, each with file:line, a one-sentence description, and a suggested fix.
 
-If for any reason the `superpowers:requesting-code-review` skill is unavailable, fall back one more level to the `feature-dev:code-reviewer` agent via the Task tool with the same scope and output format, reporting only findings at confidence ≥ 80.
+If for any reason the `superpowers:requesting-code-review` skill is unavailable, fall back to the `feature-dev:code-reviewer` agent via the Task tool with the same scope and output format, reporting only findings at confidence ≥ 80.
 
 Wait for the reviewer to return and use its output as the review results.
 
-### Step 4: Parse Review Results
+### Step 3: Parse Review Results
 
-Whichever reviewer ran, categorize:
+Categorize:
 - **Must fix:** Security issues, bugs, clear errors
 - **Should fix:** Style issues, convention violations, improvements
 - **Optional:** Nitpicks, suggestions
 
-### Step 5: Fix Issues (Max 3 Cycles)
+### Step 4: Fix Issues (Max 3 Cycles)
 
 For each cycle (limit to 3 total):
 
@@ -151,18 +74,13 @@ git commit -m "fix: address code review feedback
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-Between cycles, re-run the same reviewer that produced the findings. For CodeRabbit, add `--fresh` to every re-run — without it v0.8.x reuses its checkpoint and may report "No new findings" without actually reviewing the fixes. If CodeRabbit becomes unavailable mid-cycle, fall back to Superpowers review for the remaining cycles.
+Between cycles, re-invoke the reviewer on the updated changes.
 
 If issues remain after 3 cycles, note them but don't chase perfection.
 
-### Step 6: Final Verification
+### Step 5: Final Verification
 
-Run one more quick check with whichever reviewer is currently healthy:
-
-- CodeRabbit: `set -o pipefail; timeout 2100 coderabbit review $SCOPE_FLAG --fresh --base main 2>&1 | tail -60` (`pipefail` so a failed/timed-out review isn't masked by `tail`'s exit 0)
-- Superpowers: re-invoke `superpowers:requesting-code-review` asking only for remaining high-confidence issues.
-
-Report final status.
+Re-invoke `superpowers:requesting-code-review` asking only for remaining high-confidence issues. Report final status.
 
 ## Output
 
@@ -170,8 +88,7 @@ Report final status.
 ## Code Review Summary
 
 ### Reviewer Used
-- Primary: CodeRabbit ✅ / ⚠️ unavailable (<reason>)
-- Fallback: Superpowers code review (used / not needed)
+- Superpowers code review (or feature-dev:code-reviewer fallback)
 
 ### Review Type
 - Reviewed: committed/uncommitted changes
@@ -191,14 +108,7 @@ Report final status.
 ## Tips
 
 - Run this BEFORE creating a PR, not after.
-- Correct CLI invocation (v0.7.x/v0.8.x) is `coderabbit review --committed|--uncommitted [--include-untracked] [--base main]` — `--plain`, `--type` and `--prompt-only` no longer exist; plain text is the default.
-- Since v0.8.x, re-runs reuse a local checkpoint and may perform **no new review at all** (output says "No fresh detailed file review was performed" / "No new findings") — that is NOT a clean bill of health. Always add `--fresh` when re-reviewing after fixes. Use `coderabbit review findings` to re-print the last results without a new run.
-- Keep the CLI current with `coderabbit update`.
-- Use `--agent` when you want structured findings to parse programmatically.
-- CodeRabbit runs can take 30+ min — run in the background and monitor rather than blocking.
 - Don't chase perfection — 2-3 cycles max. Focus on real issues, skip pure style nitpicks.
-- Pass `superpowers` as an argument to skip CodeRabbit entirely (faster, no external dependency).
-- Pass `--no-fallback` if you specifically need CodeRabbit's output (e.g., for parity with CI).
 
 ## Related Commands
 

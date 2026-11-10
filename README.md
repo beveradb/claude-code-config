@@ -151,8 +151,8 @@ Run these in order:
 
 ```
 /docs-review     # Check if documentation needs updates
-/coderabbit      # Run local CodeRabbit review, fix issues
-/pr              # Create the PR (auto-adds @coderabbitai ignore)
+/coderabbit      # Run local Superpowers code review, fix issues
+/pr              # Create the PR (GitHub CodeRabbit bot also reviews)
 ```
 
 **Why review locally?** Running CodeRabbit before the PR means:
@@ -210,9 +210,9 @@ Or periodically:
 
 | Command | Description | When to Use |
 |---------|-------------|-------------|
-| `/coderabbit` | Run local CodeRabbit review, fix issues | Before PR (max 3 cycles) |
+| `/coderabbit` | Run local Superpowers code review, fix issues | Before PR (max 3 cycles) |
 | `/docs-review` | Check and update documentation | Before PR |
-| `/pr` | Create PR with `@coderabbitai ignore` | After review passes |
+| `/pr` | Create PR (GitHub CodeRabbit bot reviews it) | After review passes |
 | `/shipit` | Run all remaining steps to ship | When ready to ship |
 
 ### Maintenance
@@ -426,7 +426,6 @@ Tests: `python3 -m unittest discover -s tests/pw_pool` (uses a fake Playwright M
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed
 - Git (with worktree support - any modern version)
 - [GitHub CLI](https://cli.github.com/) (`gh`) for PR commands
-- [CodeRabbit CLI](https://www.npmjs.com/package/coderabbit) for review commands (`npm install -g coderabbit`)
 
 ## FAQ
 
