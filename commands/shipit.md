@@ -17,7 +17,7 @@ This command picks up where previous work left off and runs the remaining steps:
 1. `/test` - Run tests (if not already passing)
 2. `/test-review` - Assess test quality and coverage (if not done)
 3. `/docs-review` - Update documentation (if not done)
-4. `/coderabbit` - Run CodeRabbit review and fix issues (if not done)
+4. `/coderabbit` - Run local Superpowers code review and fix issues (if not done)
 5. **Bump version** - Increment version in project config (if applicable)
 6. `/pr` - Create PR (if not created)
 7. Merge PR once CI checks pass
@@ -77,7 +77,7 @@ Create a mental checklist based on evidence found:
 - [x/partial/?] Tests run - Evidence: [git log shows test fixes / no evidence]
 - [x/partial/?] Test review - Evidence: [test files added/improved / coverage report / no evidence]
 - [x/partial/?] Docs reviewed - Evidence: [docs files changed / no evidence]
-- [x/partial/?] CodeRabbit review - Evidence: [commit mentioning coderabbit / no evidence]
+- [x/partial/?] Code review (/coderabbit) - Evidence: [review fix commit / no evidence]
 - [?] PR created - Evidence: [PR exists / no PR found]
 
 ### Remaining Steps
@@ -406,6 +406,6 @@ If `--dry-run` is in $ARGUMENTS:
 | `/test` | Run tests independently |
 | `/test-review` | Assess test quality and coverage |
 | `/docs-review` | Review docs independently |
-| `/coderabbit` | Run CodeRabbit review independently |
+| `/coderabbit` | Run local Superpowers code review independently |
 | `/pr` | Create PR independently |
 | `/cleanup` | Clean up current worktree after merge |

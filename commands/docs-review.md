@@ -143,6 +143,6 @@ Provide a summary:
 | Command | Purpose |
 |---------|---------|
 | `/test` | Run tests before review |
-| `/coderabbit` | Run CodeRabbit CLI review |
+| `/coderabbit` | Run local Superpowers code review |
 | `/pr` | Create PR after docs review |
 | `/shipit` | Run all remaining steps and ship to prod |

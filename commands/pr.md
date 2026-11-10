@@ -1,5 +1,5 @@
 ---
-description: Create a PR after running review (includes @coderabbitai ignore)
+description: Create a PR after running local review (GitHub CodeRabbit bot also reviews)
 allowed-tools: Read, Glob, Grep, Edit, Write, Bash, mcp__github__create_pull_request, mcp__github__get_me, mcp__github__list_pull_requests
 ---
 
@@ -67,7 +67,7 @@ git diff --stat main..HEAD
 
 Create PR title and body:
 - Title: Brief summary (or use $ARGUMENTS if provided)
-- Body: Must include `@coderabbitai ignore` to prevent automatic review
+- Body: Do **not** include `@coderabbitai ignore` — the GitHub CodeRabbit bot should review every PR
 
 ### Step 5: Create the PR
 
@@ -86,10 +86,8 @@ gh pr create --title "TITLE" --body "$(cat <<'EOF'
 - [ ] Manual testing completed
 
 ## Review
-- [x] CodeRabbit CLI review completed locally
+- [x] Local Superpowers code review completed
 - [x] Issues addressed
-
-@coderabbitai ignore
 
 ---
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -97,7 +95,7 @@ EOF
 )"
 ```
 
-**CRITICAL:** The `@coderabbitai ignore` line prevents automatic CodeRabbit review since we already did it locally.
+**Note:** Never add `@coderabbitai ignore`. The local Superpowers review catches issues before the PR; the GitHub CodeRabbit bot then gives an independent second review on the PR.
 
 ### Step 6: Report Success
 
@@ -123,25 +121,20 @@ Provide:
 - [ ] Manual testing completed
 
 ## Review
-- [x] Local CodeRabbit review completed
+- [x] Local Superpowers code review completed
 - [x] Review feedback addressed
-
-@coderabbitai ignore
 ```
 
-## Why @coderabbitai ignore?
+## Why two reviews?
 
-We use the CodeRabbit CLI locally before creating the PR because:
-1. **Efficiency:** No waiting for GitHub webhook → review → fetch via API
-2. **Cost:** Avoids hitting CodeRabbit free tier rate limits
-3. **Context:** Review output goes directly to Claude, not through GitHub API
-4. **Speed:** Issues fixed before PR, not after
+1. **Local Superpowers review (`/coderabbit`)** — fast, no external dependency, issues fixed before the PR exists
+2. **GitHub CodeRabbit bot** — independent second opinion on the PR itself
 
 ## Related Commands
 
 | Command | Purpose |
 |---------|---------|
-| `/coderabbit` | Run CodeRabbit CLI review locally |
+| `/coderabbit` | Run local Superpowers code review |
 | `/test` | Run tests before PR |
 | `/docs-review` | Check if docs need updates |
 | `/shipit` | Run all remaining steps and ship to prod |

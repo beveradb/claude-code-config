@@ -113,8 +113,8 @@ Then **immediately proceed to work on the full task description** from Step 1.
 | `/test` | Run tests and check coverage |
 | `/docs-review` | Update docs before merging |
 | `/docs-maintain` | Periodic documentation cleanup |
-| `/coderabbit` | Run CodeRabbit CLI locally before PR |
-| `/pr` | Create PR with @coderabbitai ignore |
+| `/coderabbit` | Run local Superpowers code review before PR |
+| `/pr` | Create PR (GitHub CodeRabbit bot reviews) |
 | `/cleanup` | Clean up current worktree after PR merged |
 | `/tidy-all-worktrees` | Review and clean up ALL worktrees (periodic) |
 

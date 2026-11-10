@@ -20,8 +20,8 @@ Use these slash commands to maintain consistency across sessions and worktrees:
 ```
 /test-review   # Assess test quality, coverage, and completeness
 /docs-review   # Update docs if needed
-/coderabbit    # Run CodeRabbit CLI locally, fix issues (max 3 cycles)
-/pr            # Create PR (auto-adds @coderabbitai ignore)
+/coderabbit    # Run local Superpowers code review, fix issues (max 3 cycles)
+/pr            # Create PR (GitHub CodeRabbit bot also reviews)
 ```
 
 ### Ship It All (one command)
@@ -48,9 +48,9 @@ Options: `--skip-prod-test` (skip prod testing), `--dry-run` (preview only)
 
 1. **Always use worktrees** - Never commit directly to main. Start with `/start`.
 
-2. **Review before PR, not after** - Run `/coderabbit` locally before `/pr`. This runs `coderabbit review` (plain text is the default output) for efficient LLM-friendly review.
+2. **Review before PR, not after** - Run `/coderabbit` locally before `/pr`. This runs the Superpowers code review (`superpowers:requesting-code-review`); the CodeRabbit CLI is no longer used.
 
-3. **Review locally with `/coderabbit` BEFORE opening a PR, then add `@coderabbitai ignore`** - Always run `/coderabbit` and address feedback *before* `/pr`, never after. Only add `@coderabbitai ignore` to a PR description once a local CodeRabbit review has **successfully completed on that branch and its feedback has been addressed**. If no successful local review was done, open the PR **without** the ignore line so the GitHub bot reviews it — never leave a PR with neither a local review nor the bot review.
+3. **Two reviews: local first, then the GitHub bot** - Always run `/coderabbit` and address feedback *before* `/pr`, never after. **Never** add `@coderabbitai ignore` to a PR description — the GitHub CodeRabbit bot reviews every PR as an independent second opinion.
 
 4. **Max 3 review cycles** - Fix real issues, don't chase perfection. Skip pure nitpicks.
 
